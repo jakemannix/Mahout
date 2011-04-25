@@ -18,6 +18,7 @@
 package org.apache.mahout.math.hadoop.decomposer;
 
 import org.apache.mahout.math.DenseVector;
+import org.apache.mahout.math.NamedVector;
 import org.apache.mahout.math.Vector;
 
 import java.util.regex.Pattern;
@@ -25,16 +26,14 @@ import java.util.regex.Pattern;
 /**
  * TODO this is a horrible hack.  Make a proper writable subclass also.
  */
-public class EigenVector extends DenseVector {
+public class EigenVector extends NamedVector {
 
   private static final Pattern EQUAL_PATTERN = Pattern.compile(" = ");
   private static final Pattern PIPE_PATTERN = Pattern.compile("|");
 
-  private final String name;
-
   public EigenVector(Vector v, double eigenValue, double cosAngleError, int order) {
-    super(v instanceof DenseVector ? (DenseVector) v : new DenseVector(v), false);
-    name = "e|" + order + "| = |" + eigenValue + "|, err = " + cosAngleError;
+    super(v instanceof DenseVector ? (DenseVector) v : new DenseVector(v),
+        "e|" + order + "| = |" + eigenValue + "|, err = " + cosAngleError);
   }
 
   public double getEigenValue() {
@@ -49,13 +48,17 @@ public class EigenVector extends DenseVector {
     return (int)parseMetaData()[0];
   }
 
-  protected double[] parseMetaData() {
+  public static double[] parseMetaData(String name) {
     double[] m = new double[3];
     String[] s = EQUAL_PATTERN.split(name);
     m[0] = Double.parseDouble(PIPE_PATTERN.split(s[0])[1]);
     m[1] = Double.parseDouble(PIPE_PATTERN.split(s[1])[1]);
     m[2] = Double.parseDouble(s[2].substring(1));
     return m;
+  }
+
+  protected double[] parseMetaData() {
+    return parseMetaData(getName());
   }
 
 }
