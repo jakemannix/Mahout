@@ -23,6 +23,7 @@ import java.util.Iterator;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.DoubleWritable;
+import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.mahout.common.IntPairWritable;
@@ -33,7 +34,7 @@ import org.apache.mahout.math.VectorWritable;
  * Runs inference on the input documents (which are sparse vectors of word counts) and outputs the sufficient
  * statistics for the word-topic assignments.
  */
-public class LDAMapper extends Mapper<WritableComparable<?>,VectorWritable,IntPairWritable,DoubleWritable> {
+public class LDAWordTopicMapper extends Mapper<WritableComparable<?>,VectorWritable,IntPairWritable,DoubleWritable> {
   
   private LDAState state;
   private LDAInference infer;
@@ -67,12 +68,12 @@ public class LDAMapper extends Mapper<WritableComparable<?>,VectorWritable,IntPa
         
         IntPairWritable kw = new IntPairWritable(k, w);
         
-        // ouput (topic, word)'s logProb contribution
+        // output (topic, word)'s logProb contribution
         context.write(kw, v);
         logTotals[k] = LDAUtil.logSum(logTotals[k], v.get());
       }
     }
-    
+
     // Output the totals for the statistics. This is to make
     // normalizing a lot easier.
     for (int k = 0; k < state.getNumTopics(); ++k) {
@@ -93,8 +94,12 @@ public class LDAMapper extends Mapper<WritableComparable<?>,VectorWritable,IntPa
   }
   
   public void configure(Configuration job) {
-    LDAState myState = LDADriver.createState(job);
-    configure(myState);
+    try {
+      LDAState myState = LDADriver.createState(job);
+      configure(myState);
+    } catch (IOException e) {
+      throw new IllegalStateException("Error creating LDA State!", e);
+    }
   }
   
   @Override
