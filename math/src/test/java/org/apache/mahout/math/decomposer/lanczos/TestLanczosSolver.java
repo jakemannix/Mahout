@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
 public final class TestLanczosSolver extends SolverTest {
   private static final Logger log = LoggerFactory.getLogger(TestLanczosSolver.class);
 
-  private static final double ERROR_TOLERANCE = 1.0e-5;
+  private static final double ERROR_TOLERANCE = 0.05;
 
   @Test
   public void testEigenvalueCheck() throws Exception {
@@ -43,16 +43,17 @@ public final class TestLanczosSolver extends SolverTest {
     LanczosSolver solver = new LanczosSolver();
     LanczosState state = new LanczosState(m, size, desiredRank, initialVector);
     // set initial vector?
-    solver.solve(state, desiredRank);
+    solver.solve(state, desiredRank, true);
 
     EigenvalueDecomposition decomposition = new EigenvalueDecomposition(m);
     DoubleMatrix1D eigenvalues = decomposition.getRealEigenvalues();
 
-    float fractionOfEigensExpectedGood = 0.75f;
+    float fractionOfEigensExpectedGood = 0.6f;
     for(int i = 0; i < fractionOfEigensExpectedGood * desiredRank; i++) {
-      log.info(i + " : L = {}, E = {}",
-          state.getSingularValue(desiredRank - i - 1),
-          eigenvalues.get(eigenvalues.size() - i - 1) );
+      double s = state.getSingularValue(desiredRank - i - 1);
+      double e = eigenvalues.get(eigenvalues.size() - i - 1);
+      log.info(i + " : L = {}, E = {}", s, e);
+      assertTrue("Singular value differs from eigenvalue", Math.abs((s-e)/e) < ERROR_TOLERANCE);
       Vector v = state.getRightSingularVector(i);
       Vector v2 = decomposition.getV().viewColumn(eigenvalues.size() - i - 1).toVector();
       double error = 1 - Math.abs(v.dot(v2)/(v.norm(2) * v2.norm(2)));

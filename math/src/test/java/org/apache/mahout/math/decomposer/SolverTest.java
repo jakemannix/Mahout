@@ -164,14 +164,7 @@ public abstract class SolverTest extends MahoutTestCase {
       matrix.assignRow(row, v);
     }
     if(symmetric) {
-      //if(true) {
-        return matrix.times(matrix.transpose());
-      //}
-      //for(int i = 0; i < numRows; i++) {
-      //  for(int j = 0; j < i; j++) {
-      //    matrix.set(j, i, matrix.get(i, j));
-      //  }
-      //}
+      return matrix.times(matrix.transpose());
     }
     return matrix;
   }

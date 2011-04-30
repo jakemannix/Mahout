@@ -162,7 +162,7 @@ public class LanczosSolver {
       realEigen = realEigen.normalize();
       state.setRightSingularVector(row, realEigen);
       double e = eigenVals.get(row) * state.getScaleFactor();
-      if(isSymmetric) {
+      if(!isSymmetric) {
         e = Math.sqrt(e);
       }
       log.info("Eigenvector {} found with eigenvalue {}", row, e);
