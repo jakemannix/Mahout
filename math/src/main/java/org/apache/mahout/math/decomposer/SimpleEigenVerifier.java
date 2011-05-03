@@ -16,14 +16,19 @@
  */
 package org.apache.mahout.math.decomposer;
 
+import org.apache.mahout.math.CardinalityException;
+import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
 
 public class SimpleEigenVerifier implements SingularVectorVerifier {
 
   @Override
-  public EigenStatus verify(VectorIterable corpus, Vector vector) {
-    Vector resultantVector = corpus.timesSquared(vector);
+  public EigenStatus verify(LinearOperator corpus, Vector vector) {
+    if (corpus.numRows() != corpus.numCols()) {
+      throw new CardinalityException(corpus.numRows(), corpus.numCols());
+    }
+    
+    Vector resultantVector = corpus.times(vector);
     double newNorm = resultantVector.norm(2);
     double oldNorm = vector.norm(2);
     double eigenValue = (newNorm > 0 && oldNorm > 0) ? newNorm / oldNorm : 1;

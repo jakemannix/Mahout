@@ -79,7 +79,7 @@ public class DenseMatrix extends AbstractMatrix {
   }
   
   @Override
-  public Matrix like(int rows, int columns) {
+  public AbstractMatrix like(int rows, int columns) {
     return new DenseMatrix(rows, columns);
   }
   

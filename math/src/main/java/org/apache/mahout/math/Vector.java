@@ -18,10 +18,10 @@
 package org.apache.mahout.math;
 
 
+import java.util.Iterator;
+
 import org.apache.mahout.math.function.DoubleDoubleFunction;
 import org.apache.mahout.math.function.DoubleFunction;
-
-import java.util.Iterator;
 
 /**
  * The basic interface including numerous convenience functions <p/> NOTE: All implementing classes must have a
@@ -385,7 +385,7 @@ public interface Vector extends Cloneable, Iterable<Vector.Element> {
   /** Get the square of the distance between this vector and the other vector. */
   double getDistanceSquared(Vector v);
 
-  /** Add the elements of this Vector to the vector <code>v</code> and store the results in the vector <code>v</code>.
+  /** Add the elements of this Vector to the vector {@code v} and store the results in the vector {@code v}.
    * @param v The Vector that this Vector gets added to.  The results of the addition will be stored in v.
    * */
   void addTo(Vector v);

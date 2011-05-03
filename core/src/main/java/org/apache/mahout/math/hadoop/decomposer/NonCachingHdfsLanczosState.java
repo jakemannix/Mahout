@@ -1,18 +1,18 @@
 package org.apache.mahout.math.hadoop.decomposer;
 
-import org.apache.hadoop.fs.Path;
-import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
-
 import java.io.IOException;
+
+import org.apache.hadoop.fs.Path;
+import org.apache.mahout.math.LinearOperator;
+import org.apache.mahout.math.Vector;
 
 /**
  * 
  */
 public class NonCachingHdfsLanczosState extends HdfsBackedLanczosState {
-  public NonCachingHdfsLanczosState(VectorIterable corpus, int numCols, int desiredRank,
+  public NonCachingHdfsLanczosState(LinearOperator corpus, int numCols, boolean isSymmetric, int desiredRank,
       Vector initialVector, Path dir) {
-    super(corpus, numCols, desiredRank, initialVector, dir);
+    super(corpus, numCols, isSymmetric, desiredRank, initialVector, dir);
   }
 
   @Override

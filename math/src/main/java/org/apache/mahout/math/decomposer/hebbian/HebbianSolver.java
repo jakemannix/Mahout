@@ -17,23 +17,23 @@
 
 package org.apache.mahout.math.decomposer.hebbian;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.Random;
-
-import java.util.ArrayList;
 
 import org.apache.mahout.common.RandomUtils;
 import org.apache.mahout.math.AbstractMatrix;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.SquaredLinearOperator;
+import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.decomposer.AsyncEigenVerifier;
 import org.apache.mahout.math.decomposer.EigenStatus;
 import org.apache.mahout.math.decomposer.SingularVectorVerifier;
-import org.apache.mahout.math.function.TimesFunction;
-import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.function.PlusMult;
+import org.apache.mahout.math.function.TimesFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -169,10 +169,10 @@ public class HebbianSolver {
    * @return the final {@link TrainingState } of the solver, after desiredRank singular vectors (and approximate
    *         singular values) have been found.
    */
-  public TrainingState solve(Matrix corpus,
+  public TrainingState solve(AbstractMatrix corpus,
                              int desiredRank) {
     int cols = corpus.numCols();
-    Matrix eigens = new DenseMatrix(desiredRank, cols);
+    AbstractMatrix eigens = new DenseMatrix(desiredRank, cols);
     List<Double> eigenValues = new ArrayList<Double>();
     log.info("Finding " + desiredRank + " singular vectors of matrix with " + corpus.numRows() + " rows, via Hebbian");
     /**
@@ -262,7 +262,7 @@ public class HebbianSolver {
    * @return true if <em>either</em> we have converged, <em>or</em> maxPassesPerEigen has been exceeded.
    */
   protected boolean hasNotConverged(Vector currentPseudoEigen,
-                                    Matrix corpus,
+                                    AbstractMatrix corpus,
                                     TrainingState state) {
     numPasses++;
     if (state.isFirstPass()) {
@@ -283,7 +283,7 @@ public class HebbianSolver {
     if (DEBUG && currentPseudoEigen.norm(2) > 0) {
       for (int i = 0; i < state.getNumEigensProcessed(); i++) {
         Vector previousEigen = previousEigens.getRow(i);
-        log.info("dot with previous: {}", (previousEigen.dot(currentPseudoEigen)) / currentPseudoEigen.norm(2));
+        log.info("dot with previous: {}", previousEigen.dot(currentPseudoEigen) / currentPseudoEigen.norm(2));
       }
     }
     /*
@@ -301,8 +301,8 @@ public class HebbianSolver {
         && 1.0 - status.getCosAngle() > convergenceTarget;
   }
 
-  protected EigenStatus verify(Matrix corpus, Vector currentPseudoEigen) {
-    return verifier.verify(corpus, currentPseudoEigen);
+  protected EigenStatus verify(AbstractMatrix corpus, Vector currentPseudoEigen) {
+    return verifier.verify(new SquaredLinearOperator(corpus), currentPseudoEigen);
   }
 
   public static void main(String[] args) {
@@ -325,7 +325,7 @@ public class HebbianSolver {
     HebbianUpdater updater = new HebbianUpdater();
     SingularVectorVerifier verifier = new AsyncEigenVerifier();
     HebbianSolver solver = new HebbianSolver(updater, verifier, convergence, maxPasses);
-    Matrix corpus = null;
+    AbstractMatrix corpus = null;
     /*
     if (numThreads <= 1) {
       //  corpus = new DiskBufferedDoubleMatrix(new File(corpusDir), inBufferSize);

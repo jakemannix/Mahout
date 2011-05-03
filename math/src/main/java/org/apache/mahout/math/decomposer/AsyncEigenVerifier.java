@@ -20,8 +20,8 @@ package org.apache.mahout.math.decomposer;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
+import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
 
 
 public class AsyncEigenVerifier extends SimpleEigenVerifier {
@@ -37,7 +37,7 @@ public class AsyncEigenVerifier extends SimpleEigenVerifier {
   }
 
   @Override
-  public synchronized EigenStatus verify(VectorIterable corpus, Vector vector) {
+  public synchronized EigenStatus verify(LinearOperator corpus, Vector vector) {
     if (!finished && !started) { // not yet started or finished, so start!
       status = new EigenStatus(-1, 0);
       Vector vectorCopy = vector.clone();
@@ -50,15 +50,15 @@ public class AsyncEigenVerifier extends SimpleEigenVerifier {
     return status;
   }
 
-  protected EigenStatus innerVerify(VectorIterable corpus, Vector vector) {
+  protected EigenStatus innerVerify(LinearOperator corpus, Vector vector) {
     return super.verify(corpus, vector);
   }
 
   private class VerifierRunnable implements Runnable {
-    private final VectorIterable corpus;
+    private final LinearOperator corpus;
     private final Vector vector;
 
-    protected VerifierRunnable(VectorIterable corpus, Vector vector) {
+    protected VerifierRunnable(LinearOperator corpus, Vector vector) {
       this.corpus = corpus;
       this.vector = vector;
     }

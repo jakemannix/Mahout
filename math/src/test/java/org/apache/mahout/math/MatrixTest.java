@@ -487,16 +487,6 @@ public abstract class MatrixTest extends MahoutTestCase {
     test.times(testTimesVectorA);
   }
 
-  @Test
-  public void testTimesSquaredTimesVector() {
-    Vector vectorA = new DenseVector(vectorAValues);
-    Vector ttA = test.timesSquared(vectorA);
-    Vector ttASlow = test.transpose().times(test.times(vectorA));
-    assertTrue("M'Mv != M.timesSquared(v): " + ttA + " != " + ttASlow,
-        ttASlow.minus(ttA).norm(2) < 1.0e-12);
-
-  }
-
   @Test(expected = CardinalityException.class)
   public void testTimesMatrixCardinality() {
     Matrix other = test.like(5, 8);

@@ -1,5 +1,8 @@
 package org.apache.mahout.math.hadoop.decomposer;
 
+import java.io.IOException;
+import java.util.Map;
+
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -8,16 +11,13 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
+import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.decomposer.lanczos.LanczosState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.util.Map;
 
 public class HdfsBackedLanczosState extends LanczosState implements Configurable {
   private static final Logger log = LoggerFactory.getLogger(HdfsBackedLanczosState.class);
@@ -31,9 +31,9 @@ public class HdfsBackedLanczosState extends LanczosState implements Configurable
   private Path singularVectorPath;
   private FileSystem fs;
   
-  public HdfsBackedLanczosState(VectorIterable corpus, int numCols, int desiredRank,
+  public HdfsBackedLanczosState(LinearOperator corpus, int numCols, boolean isSymmetric, int desiredRank,
       Vector initialVector, Path dir) {
-    super(corpus, numCols, desiredRank, initialVector);
+    super(corpus, numCols, isSymmetric, desiredRank, initialVector);
     baseDir = dir;
     metadataPath = new Path(dir, METADATA_FILE);
     basisPath = new Path(dir, BASIS_PREFIX);

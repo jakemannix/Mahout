@@ -17,9 +17,9 @@
 
 package org.apache.mahout.math.decomposer;
 
+import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
 
 public interface SingularVectorVerifier {
-  EigenStatus verify(VectorIterable eigenMatrix, Vector vector);
+  EigenStatus verify(LinearOperator eigenMatrix, Vector vector);
 }

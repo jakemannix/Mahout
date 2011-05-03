@@ -18,9 +18,12 @@
 package org.apache.mahout.math.decomposer.lanczos;
 
 
+import java.util.EnumMap;
+import java.util.Map;
+
+import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
 import org.apache.mahout.math.function.DoubleFunction;
 import org.apache.mahout.math.function.PlusMult;
 import org.apache.mahout.math.matrix.DoubleMatrix1D;
@@ -28,9 +31,6 @@ import org.apache.mahout.math.matrix.DoubleMatrix2D;
 import org.apache.mahout.math.matrix.linalg.EigenvalueDecomposition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.EnumMap;
-import java.util.Map;
 
 /**
  * <p>Simple implementation of the <a href="http://en.wikipedia.org/wiki/Lanczos_algorithm">Lanczos algorithm</a> for
@@ -62,6 +62,7 @@ public class LanczosSolver {
   private static final Logger log = LoggerFactory.getLogger(LanczosSolver.class);
 
   public static final double SAFE_MAX = 1.0e150;
+  private static final double NANOS_IN_MILLI = 1.0e6;
 
   public enum TimingSection {
     ITERATE, ORTHOGANLIZE, TRIDIAG_DECOMP, FINAL_EIGEN_CREATE
@@ -83,15 +84,8 @@ public class LanczosSolver {
     }
   }
 
-  public void solve(LanczosState state,
-                    int desiredRank) {
-    solve(state, desiredRank, false);
-  }
-
-  public void solve(LanczosState state,
-                    int desiredRank,
-                    boolean isSymmetric) {
-    VectorIterable corpus = state.getCorpus();
+  public void solve(LanczosState state, int desiredRank) {
+    LinearOperator corpus = state.getCorpus();
     log.info("Finding {} singular vectors of matrix with {} rows, via Lanczos",
         desiredRank, corpus.numRows());
     int i = state.getIterationNumber();
@@ -101,7 +95,7 @@ public class LanczosSolver {
     Matrix triDiag = state.getDiagonalMatrix();
     while (i < desiredRank) {
       startTime(TimingSection.ITERATE);
-      Vector nextVector = isSymmetric ? corpus.times(currentVector) : corpus.timesSquared(currentVector);
+      Vector nextVector = corpus.times(currentVector);
       log.info("{} passes through the corpus so far...", i);
       if(state.getScaleFactor() <= 0) {
         state.setScaleFactor(calculateScaleFactor(nextVector));
@@ -162,9 +156,6 @@ public class LanczosSolver {
       realEigen = realEigen.normalize();
       state.setRightSingularVector(row, realEigen);
       double e = eigenVals.get(row) * state.getScaleFactor();
-      if(isSymmetric) {
-        e = Math.sqrt(e);
-      }
       log.info("Eigenvector {} found with eigenvalue {}", row, e);
       state.setSingularValue(row, e);
     }
@@ -199,7 +190,10 @@ public class LanczosSolver {
     if (!times.containsKey(section)) {
       times.put(section, 0L);
     }
-    times.put(section, times.get(section) + (System.nanoTime() - startTimes.get(section)));
+    times.put(section, times.get(section) + System.nanoTime() - startTimes.get(section));
   }
 
+  public double getTimeMillis(TimingSection section) {
+    return (double) times.get(section) / NANOS_IN_MILLI;
+  }
 }

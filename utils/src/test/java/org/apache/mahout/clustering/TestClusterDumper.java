@@ -274,14 +274,14 @@ public final class TestClusterDumper extends MahoutTestCase {
     DistanceMeasure measure = new EuclideanDistanceMeasure();
     Path output = getTestTempDirPath("output");
     Path tmp = getTestTempDirPath("tmp");
+    Path working = getTestTempDirPath("working");
     DistributedLanczosSolver solver = new DistributedLanczosSolver();
     Configuration conf = new Configuration();
     solver.setConf(conf);
     Path testData = getTestTempDirPath("testdata");
     int sampleDimension = sampleData.get(0).get().size();
     int desiredRank = 15;
-    solver.run(testData, output, tmp, null, sampleData.size(), sampleDimension, false,
-        desiredRank, 0.5, 0.0, true);
+    solver.run(testData, output, tmp, working, sampleData.size(), sampleDimension, false, desiredRank, 0.5, 0.0, true);
     Path cleanEigenvectors = new Path(output, EigenVerificationJob.CLEAN_EIGENVECTORS);
 
     // build in-memory data matrix A
@@ -333,6 +333,7 @@ public final class TestClusterDumper extends MahoutTestCase {
     DistanceMeasure measure = new EuclideanDistanceMeasure();
     Path output = getTestTempDirPath("output");
     Path tmp = getTestTempDirPath("tmp");
+    Path working = getTestTempDirPath("working");
     DistributedLanczosSolver solver = new DistributedLanczosSolver();
     Configuration config = new Configuration();
     solver.setConf(config);
@@ -340,7 +341,7 @@ public final class TestClusterDumper extends MahoutTestCase {
     int sampleDimension = sampleData.get(0).get().size();
     // Run EigenVerificationJob from within DistributedLanczosSolver.run(...)
     int desiredRank = 13;
-    solver.run(testData, output, tmp, null, sampleData.size(), sampleDimension,
+    solver.run(testData, output, tmp, working, sampleData.size(), sampleDimension,
         false, desiredRank, 0.5, 0.0, false);
 
     Path cleanEigenvectors = new Path(output, EigenVerificationJob.CLEAN_EIGENVECTORS);
@@ -370,6 +371,7 @@ public final class TestClusterDumper extends MahoutTestCase {
     DistanceMeasure measure = new EuclideanDistanceMeasure();
     Path output = getTestTempDirPath("output");
     Path tmp = getTestTempDirPath("tmp");
+    Path working = getTestTempDirPath("working");
     DistributedLanczosSolver solver = new DistributedLanczosSolver();
     Configuration config = new Configuration();
     solver.setConf(config);
@@ -377,10 +379,11 @@ public final class TestClusterDumper extends MahoutTestCase {
     int sampleDimension = sampleData.get(0).get().size();
     // call EigenVerificationJob separately
     int desiredRank = 13;
-    solver.run(testData, output, tmp, null, sampleData.size(), sampleDimension, false, desiredRank);
+    solver.run(testData, output, tmp, working, sampleData.size(), sampleDimension, false, desiredRank);
     Path rawEigenvectors = new Path(output, DistributedLanczosSolver.RAW_EIGENVECTORS);
     Configuration conf = new Configuration(config);
-    new EigenVerificationJob().run(testData, rawEigenvectors, output, tmp, 0.5, 0.0, true, conf);
+    new EigenVerificationJob().run(testData, rawEigenvectors, output, tmp, sampleData.size(), sampleDimension, 
+    		false, 0.5, 0.0, true, conf);
     Path cleanEigenvectors = new Path(output, EigenVerificationJob.CLEAN_EIGENVECTORS);
 
     // now multiply the testdata matrix and the eigenvector matrix

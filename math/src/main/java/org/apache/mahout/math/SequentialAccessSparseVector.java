@@ -17,6 +17,8 @@
 
 package org.apache.mahout.math;
 
+import java.util.Iterator;
+
 import com.google.common.collect.AbstractIterator;
 import org.apache.mahout.math.function.Functions;
 

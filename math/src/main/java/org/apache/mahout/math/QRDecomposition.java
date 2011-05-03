@@ -25,9 +25,9 @@ It is provided "as is" without expressed or implied warranty.
 */
 package org.apache.mahout.math;
 
-import org.apache.mahout.math.function.Functions;
-
 import java.util.Locale;
+
+import org.apache.mahout.math.function.Functions;
 
 
 /**

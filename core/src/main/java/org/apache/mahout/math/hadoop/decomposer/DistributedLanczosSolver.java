@@ -63,11 +63,10 @@ public class DistributedLanczosSolver extends LanczosSolver implements Tool {
   public LanczosState runJob(Configuration originalConfig,
                              LanczosState state,
                              int desiredRank,
-                             boolean isSymmetric,
                              String outputEigenVectorPathString) throws IOException {
     ((DistributedRowMatrix)state.getCorpus()).setConf(new Configuration(originalConfig));
     setConf(originalConfig);
-    solve(state, desiredRank, isSymmetric);
+    solve(state, desiredRank);
     serializeOutput(state, new Path(outputEigenVectorPathString));
     return state;
   }
@@ -85,18 +84,17 @@ public class DistributedLanczosSolver extends LanczosSolver implements Tool {
                              String outputEigenVectorPathString) throws IOException {
     DistributedRowMatrix matrix = new DistributedRowMatrix(inputPath, outputTmpPath, numRows, numCols);
     matrix.setConf(new Configuration(originalConfig));
-    LanczosState state = new LanczosState(matrix, numCols, desiredRank, getInitialVector(matrix));
-    return runJob(originalConfig, state, desiredRank, isSymmetric, outputEigenVectorPathString);
+    LanczosState state = new LanczosState(matrix, numCols, isSymmetric, desiredRank, getInitialVector(matrix));
+    return runJob(originalConfig, state, desiredRank, outputEigenVectorPathString);
   }
 
   public void runJob(Configuration originalConfig,
                      LanczosState state,
                      int numCols,
                      int desiredRank,
-                     boolean isSymmetric,
                      String outputEigenVectorPathString) throws IOException {
     setConf(originalConfig);
-    solve(state, desiredRank, isSymmetric);
+    solve(state, desiredRank);
     serializeOutput(state, new Path(outputEigenVectorPathString));
   }
 
@@ -168,6 +166,9 @@ public class DistributedLanczosSolver extends LanczosSolver implements Tool {
                                           rawEigenVectorPath,
                                           outputPath,
                                           outputTmpPath,
+                                          numRows,
+                                          numCols,
+                                          isSymmetric,
                                           maxError,
                                           minEigenvalue,
                                           inMemory,
@@ -199,15 +200,15 @@ public class DistributedLanczosSolver extends LanczosSolver implements Tool {
 
     LanczosState state;
     if(workingDirPath == null) {
-      state = new LanczosState(matrix, numCols, desiredRank, getInitialVector(matrix));
+      state = new LanczosState(matrix, numCols, isSymmetric, desiredRank, getInitialVector(matrix));
     } else {
       HdfsBackedLanczosState hState =
-          new HdfsBackedLanczosState(matrix, numCols, desiredRank, getInitialVector(matrix),
+          new HdfsBackedLanczosState(matrix, numCols, isSymmetric, desiredRank, getInitialVector(matrix),
               workingDirPath);
       hState.setConf(matrix.getConf());
       state = hState;
     }
-    solve(state, desiredRank, isSymmetric);
+    solve(state, desiredRank);
 
     Path outputEigenVectorPath = new Path(outputPath, RAW_EIGENVECTORS);
     serializeOutput(state, outputEigenVectorPath);

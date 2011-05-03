@@ -20,6 +20,7 @@ package org.apache.mahout.math.decomposer.hebbian;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.mahout.math.AbstractMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.Vector;
@@ -27,7 +28,7 @@ import org.apache.mahout.math.decomposer.EigenStatus;
 
 public class TrainingState {
 
-  private Matrix currentEigens;
+  private AbstractMatrix currentEigens;
   private int numEigensProcessed;
   private List<Double> currentEigenValues;
   private Matrix trainingProjections;
@@ -38,7 +39,7 @@ public class TrainingState {
   private double activationNumerator;
   private double activationDenominatorSquared;
 
-  TrainingState(Matrix eigens, Matrix projections) {
+  TrainingState(AbstractMatrix eigens, Matrix projections) {
     currentEigens = eigens;
     trainingProjections = projections;
     trainingIndex = 0;
@@ -61,11 +62,11 @@ public class TrainingState {
     return trainingProjections.getRow(trainingIndex);
   }
 
-  public Matrix getCurrentEigens() {
+  public AbstractMatrix getCurrentEigens() {
     return currentEigens;
   }
 
-  public void setCurrentEigens(Matrix currentEigens) {
+  public void setCurrentEigens(AbstractMatrix currentEigens) {
     this.currentEigens = currentEigens;
   }
 

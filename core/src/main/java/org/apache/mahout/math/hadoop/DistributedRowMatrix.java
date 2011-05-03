@@ -17,8 +17,11 @@
 
 package org.apache.mahout.math.hadoop;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Iterators;
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.util.Iterator;
+
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -30,7 +33,9 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.iterator.sequencefile.PathType;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileDirIterator;
+import org.apache.mahout.math.AbstractLinearOperator;
 import org.apache.mahout.math.CardinalityException;
+import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.MatrixSlice;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorIterable;
@@ -38,10 +43,8 @@ import org.apache.mahout.math.VectorWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-import java.util.Iterator;
+import com.google.common.base.Function;
+import com.google.common.collect.Iterators;
 
 /**
  * DistributedRowMatrix is a FileSystem-backed VectorIterable in which the vectors live in a
@@ -61,7 +64,7 @@ import java.util.Iterator;
  * </pre>
  *
  */
-public class DistributedRowMatrix implements VectorIterable, Configurable {
+public class DistributedRowMatrix extends AbstractLinearOperator implements LinearOperator, VectorIterable, Configurable {
   public static final String KEEP_TEMP_FILES = "DistributedMatrix.keep.temp.files";
   
   private static final Logger log = LoggerFactory.getLogger(DistributedRowMatrix.class);
@@ -218,7 +221,6 @@ public class DistributedRowMatrix implements VectorIterable, Configurable {
     }
   }
 
-  @Override
   public Vector timesSquared(Vector v) {
     try {
       Configuration initialConf = getConf() == null ? new Configuration() : getConf();

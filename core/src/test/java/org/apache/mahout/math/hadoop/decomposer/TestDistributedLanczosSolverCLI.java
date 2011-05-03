@@ -120,7 +120,7 @@ public final class TestDistributedLanczosSolverCLI extends MahoutTestCase {
       eigenvalues.add(EigenVector.parseMetaData(v.getName())[1]);
       i++;
     }
-    assertEquals("number of clean eigenvectors", 4, i);
+    assertEquals("number of clean eigenvectors", 6, i);
 
     output = getTestTempDirPath("output2");
     tmp = getTestTempDirPath("tmp2");
@@ -159,7 +159,7 @@ public final class TestDistributedLanczosSolverCLI extends MahoutTestCase {
         }
       }
     }
-    assertEquals("the number of new eigenvectors", 10, i);
+    assertEquals("the number of new eigenvectors", 14, i);
 
     List<Double> oldEigenValuesNotFound = new ArrayList<Double>();
     for(double d : eigenvalues) {

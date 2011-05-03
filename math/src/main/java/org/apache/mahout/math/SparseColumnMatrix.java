@@ -95,7 +95,7 @@ public class SparseColumnMatrix extends AbstractMatrix {
   }
 
   @Override
-  public Matrix like(int rows, int columns) {
+  public AbstractMatrix like(int rows, int columns) {
     int[] c = new int[2];
     c[ROW] = rows;
     c[COL] = columns;
