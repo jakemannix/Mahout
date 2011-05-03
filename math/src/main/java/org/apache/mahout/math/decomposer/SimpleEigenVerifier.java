@@ -16,6 +16,7 @@
  */
 package org.apache.mahout.math.decomposer;
 
+import org.apache.mahout.math.CardinalityException;
 import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.Vector;
 
@@ -23,6 +24,10 @@ public class SimpleEigenVerifier implements SingularVectorVerifier {
 
   @Override
   public EigenStatus verify(LinearOperator corpus, Vector vector) {
+    if (corpus.numRows() != corpus.numCols()) {
+      throw new CardinalityException(corpus.numRows(), corpus.numCols());
+    }
+    
     Vector resultantVector = corpus.times(vector);
     double newNorm = resultantVector.norm(2);
     double oldNorm = vector.norm(2);

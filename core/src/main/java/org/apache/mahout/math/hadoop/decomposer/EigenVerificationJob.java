@@ -39,6 +39,7 @@ import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.MatrixSlice;
 import org.apache.mahout.math.OrthonormalityVerifier;
 import org.apache.mahout.math.SparseRowMatrix;
+import org.apache.mahout.math.SquaredLinearOperator;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorIterable;
 import org.apache.mahout.math.VectorWritable;
@@ -133,6 +134,9 @@ public class EigenVerificationJob extends AbstractJob {
                  Path eigenInput,
                  Path output,
                  Path tempOut,
+                 int numRows,
+                 int numCols,
+                 boolean isSymmetric,
                  double maxError,
                  double minEigenValue,
                  boolean inMemory,
@@ -145,10 +149,15 @@ public class EigenVerificationJob extends AbstractJob {
     if (eigenInput != null && eigensToVerify == null) {
       prepareEigens(conf, eigenInput, inMemory);
     }
-    DistributedRowMatrix c = new DistributedRowMatrix(corpusInput, tempOut, 1, 1);
+    DistributedRowMatrix c = new DistributedRowMatrix(corpusInput, tempOut, numRows, numCols);
     c.setConf(conf);
-    corpus = c;
 
+    if (isSymmetric) {
+      corpus = c;
+    } else {
+      corpus = new SquaredLinearOperator(c);
+    }
+    
     // set up eigenverifier and orthoverifier TODO: allow multithreaded execution
 
     eigenVerifier = new SimpleEigenVerifier();

@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
 public class EigenVector extends NamedVector {
 
   private static final Pattern EQUAL_PATTERN = Pattern.compile(" = ");
-  private static final Pattern PIPE_PATTERN = Pattern.compile("|");
+  private static final Pattern PIPE_PATTERN = Pattern.compile("\\|");
 
   public EigenVector(Vector v, double eigenValue, double cosAngleError, int order) {
     super(v instanceof DenseVector ? (DenseVector) v : new DenseVector(v),

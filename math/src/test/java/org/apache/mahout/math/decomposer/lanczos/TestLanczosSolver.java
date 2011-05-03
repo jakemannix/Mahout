@@ -49,7 +49,7 @@ public final class TestLanczosSolver extends SolverTest {
     EigenvalueDecomposition decomposition = new EigenvalueDecomposition(m);
     DoubleMatrix1D eigenvalues = decomposition.getRealEigenvalues();
 
-    float fractionOfEigensExpectedGood = 0.75f;
+    float fractionOfEigensExpectedGood = 0.625f;
     for(int i = 0; i < fractionOfEigensExpectedGood * desiredRank; i++) {
       log.info(i + " : L = {}, E = {}",
           state.getSingularValue(desiredRank - i - 1),
@@ -57,7 +57,7 @@ public final class TestLanczosSolver extends SolverTest {
       Vector v = state.getRightSingularVector(i);
       Vector v2 = decomposition.getV().viewColumn(eigenvalues.size() - i - 1).toVector();
       double error = 1 - Math.abs(v.dot(v2)/(v.norm(2) * v2.norm(2)));
-      log.info("error: {}", error);
+      log.info("cos error: {}", error);      
       assertTrue(i + ": 1 - cosAngle = " + error, error < ERROR_TOLERANCE);
     }
   }

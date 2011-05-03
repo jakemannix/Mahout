@@ -27,6 +27,7 @@ import org.apache.mahout.math.AbstractMatrix;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.SquaredLinearOperator;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.decomposer.AsyncEigenVerifier;
 import org.apache.mahout.math.decomposer.EigenStatus;
@@ -301,7 +302,7 @@ public class HebbianSolver {
   }
 
   protected EigenStatus verify(AbstractMatrix corpus, Vector currentPseudoEigen) {
-    return verifier.verify(corpus, currentPseudoEigen);
+    return verifier.verify(new SquaredLinearOperator(corpus), currentPseudoEigen);
   }
 
   public static void main(String[] args) {

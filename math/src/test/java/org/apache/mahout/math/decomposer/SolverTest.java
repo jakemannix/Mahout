@@ -29,6 +29,7 @@ import org.apache.mahout.math.MahoutTestCase;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
+import org.apache.mahout.math.SquaredLinearOperator;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.decomposer.lanczos.LanczosState;
 import org.apache.mahout.math.function.Functions;
@@ -109,6 +110,10 @@ public abstract class SolverTest extends MahoutTestCase {
       boolean isSymmetric) {
     if (e.getLengthSquared() == 0) {
       return;
+    }
+    
+    if (!isSymmetric) {
+      corpus = new SquaredLinearOperator(corpus);
     }
     Vector afterMultiply = corpus.times(e);
     double dot = afterMultiply.dot(e);

@@ -382,7 +382,8 @@ public final class TestClusterDumper extends MahoutTestCase {
     solver.run(testData, output, tmp, working, sampleData.size(), sampleDimension, false, desiredRank);
     Path rawEigenvectors = new Path(output, DistributedLanczosSolver.RAW_EIGENVECTORS);
     Configuration conf = new Configuration(config);
-    new EigenVerificationJob().run(testData, rawEigenvectors, output, tmp, 0.5, 0.0, true, conf);
+    new EigenVerificationJob().run(testData, rawEigenvectors, output, tmp, sampleData.size(), sampleDimension, 
+    		false, 0.5, 0.0, true, conf);
     Path cleanEigenvectors = new Path(output, EigenVerificationJob.CLEAN_EIGENVECTORS);
 
     // now multiply the testdata matrix and the eigenvector matrix
