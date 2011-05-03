@@ -17,10 +17,11 @@
 
 package org.apache.mahout.math;
 
-import com.google.common.collect.AbstractIterator;
+import java.util.Iterator;
+
 import org.apache.mahout.math.function.Functions;
 
-import java.util.Iterator;
+import com.google.common.collect.AbstractIterator;
 
 /**
  * <p>

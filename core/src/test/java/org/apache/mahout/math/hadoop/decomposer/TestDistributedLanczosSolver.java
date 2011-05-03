@@ -87,15 +87,15 @@ public final class TestDistributedLanczosSolver extends SolverTest {
     Vector intitialVector = solver.getInitialVector(corpus);
     LanczosState state;
     if(hdfsBackedState) {
-      HdfsBackedLanczosState hState = new HdfsBackedLanczosState(corpus, corpus.numCols(),
+      HdfsBackedLanczosState hState = new HdfsBackedLanczosState(corpus, corpus.numCols(), symmetric,
           desiredRank, intitialVector, new Path(getTestTempDirPath(),
               "lanczosStateDir" + suf(symmetric) + counter));
       hState.setConf(conf);
       state = hState;
     } else {
-      state = new LanczosState(corpus, corpus.numCols(), desiredRank, intitialVector);
+      state = new LanczosState(corpus, corpus.numCols(), symmetric, desiredRank, intitialVector);
     }
-    solver.solve(state, desiredRank, symmetric);
+    solver.solve(state, desiredRank);
     assertOrthonormal(state);
     for(int i = 0; i < desiredRank/2; i++) {
       assertEigen(i, state.getRightSingularVector(i), corpus, 0.1, symmetric);
@@ -111,15 +111,15 @@ public final class TestDistributedLanczosSolver extends SolverTest {
     DistributedLanczosSolver solver = new DistributedLanczosSolver();
     int rank = 10;
     Vector intitialVector = solver.getInitialVector(corpus);
-    HdfsBackedLanczosState state = new HdfsBackedLanczosState(corpus, corpus.numCols(), rank,
+    HdfsBackedLanczosState state = new HdfsBackedLanczosState(corpus, corpus.numCols(), symmetric, rank,
         intitialVector, new Path(getTestTempDirPath(), "lanczosStateDir" + suf(symmetric) + counter));
-    solver.solve(state, rank, symmetric);
+    solver.solve(state, rank);
 
     rank *= 2;
-    state = new HdfsBackedLanczosState(corpus, corpus.numCols(), rank,
+    state = new HdfsBackedLanczosState(corpus, corpus.numCols(), symmetric, rank,
         intitialVector, new Path(getTestTempDirPath(), "lanczosStateDir" + suf(symmetric) + counter));
     solver = new DistributedLanczosSolver();
-    solver.solve(state, rank, symmetric);
+    solver.solve(state, rank);
 
     LanczosState allAtOnceState = doTestDistributedLanczosSolver(symmetric, rank, false);
     for(int i=0; i<state.getIterationNumber(); i++) {

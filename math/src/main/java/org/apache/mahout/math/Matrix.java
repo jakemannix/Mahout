@@ -17,14 +17,14 @@
 
 package org.apache.mahout.math;
 
+import java.util.Map;
+
 import org.apache.mahout.math.function.DoubleDoubleFunction;
 import org.apache.mahout.math.function.DoubleFunction;
 import org.apache.mahout.math.function.VectorFunction;
 
-import java.util.Map;
-
 /** The basic interface including numerous convenience functions */
-public interface Matrix extends Cloneable, VectorIterable {
+public interface Matrix extends Cloneable, VectorIterable, LinearOperator {
 
   /** @return a formatted String suitable for output */
   String asFormatString();
@@ -278,6 +278,16 @@ public interface Matrix extends Cloneable, VectorIterable {
    */
   Matrix times(Matrix x);
 
+  /**
+   * Return a new vector with cardinality equal to getNumRows() of this matrix which is the matrix product of the
+   * recipient and the argument
+   *
+   * @param v a vector with cardinality equal to getNumCols() of the recipient
+   * @return a new vector (typically a DenseVector)
+   * @throws CardinalityException if this.getNumRows() != v.size()
+   */
+  Vector times(Vector v);
+  
   /**
    * Return a new matrix that is the transpose of the receiver
    *

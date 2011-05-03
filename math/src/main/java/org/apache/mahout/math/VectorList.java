@@ -17,12 +17,12 @@
 
 package org.apache.mahout.math;
 
+import java.util.Iterator;
+import java.util.List;
+
 import com.google.common.base.Preconditions;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Lists;
-
-import java.util.Iterator;
-import java.util.List;
 
 /**
  * Provides a very flexible matrix that is based on a simple list of vectors.

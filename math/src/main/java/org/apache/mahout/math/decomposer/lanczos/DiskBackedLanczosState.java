@@ -1,17 +1,17 @@
 package org.apache.mahout.math.decomposer.lanczos;
 
-import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
-
 import java.io.File;
+
+import org.apache.mahout.math.LinearOperator;
+import org.apache.mahout.math.Vector;
 
 public class DiskBackedLanczosState extends LanczosState {
 
   protected final File dir;
 
-  public DiskBackedLanczosState(VectorIterable corpus, int numCols, int desiredRank,
+  public DiskBackedLanczosState(LinearOperator corpus, int numCols, boolean isSymmetric, int desiredRank,
       Vector initialVector, File dir) {
-    super(corpus, numCols, desiredRank, initialVector);
+    super(corpus, numCols, isSymmetric, desiredRank, initialVector);
     this.dir = dir;
   }
 

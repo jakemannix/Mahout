@@ -17,20 +17,21 @@
 
 package org.apache.mahout.math;
 
-import com.google.common.collect.Maps;
-import org.apache.mahout.math.function.DoubleDoubleFunction;
-import org.apache.mahout.math.function.Functions;
-import org.apache.mahout.math.function.PlusMult;
-import org.apache.mahout.math.function.DoubleFunction;
-import org.apache.mahout.math.function.VectorFunction;
-
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
+import org.apache.mahout.math.function.DoubleDoubleFunction;
+import org.apache.mahout.math.function.DoubleFunction;
+import org.apache.mahout.math.function.Functions;
+import org.apache.mahout.math.function.PlusMult;
+import org.apache.mahout.math.function.VectorFunction;
+
+import com.google.common.collect.Maps;
+
 /** A few universal implementations of convenience functions */
-public abstract class AbstractMatrix implements Matrix {
+public abstract class AbstractMatrix extends AbstractLinearOperator implements Matrix {
 
   protected Map<String, Integer> columnLabelBindings;
 
@@ -553,7 +554,6 @@ public abstract class AbstractMatrix implements Matrix {
     return w;
   }
 
-  @Override
   public Vector timesSquared(Vector v) {
     int[] c = size();
     if (c[COL] != v.size()) {
@@ -600,6 +600,31 @@ public abstract class AbstractMatrix implements Matrix {
     return result;
   }
 
+  public abstract Matrix like(int rows, int columns);
+
+  @Override
+  public LinearOperator times(LinearOperator other) {
+    if (other instanceof Matrix) {
+      return times((Matrix)other);
+    } else {
+      return super.times(other);
+    }    
+  }
+  
+  @Override
+  public LinearOperator plus(LinearOperator other) {
+    if (other instanceof Matrix) {
+      return plus((Matrix)other);
+    } else {
+      return super.plus(other);
+    }
+  }
+  
+  @Override
+  public LinearOperator scale(double scalar) {
+    return assign(Functions.mult(scalar));
+  }
+  
   protected class TransposeViewVector extends AbstractVector {
 
     private final Matrix matrix;

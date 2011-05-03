@@ -18,10 +18,10 @@
 package org.apache.mahout.math;
 
 
+import java.util.Iterator;
+
 import org.apache.mahout.math.function.DoubleDoubleFunction;
 import org.apache.mahout.math.function.DoubleFunction;
-
-import java.util.Iterator;
 
 /**
  * The basic interface including numerous convenience functions <p/> NOTE: All implementing classes must have a

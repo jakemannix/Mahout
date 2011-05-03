@@ -17,22 +17,23 @@
 
 package org.apache.mahout.math.decomposer;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+import org.apache.mahout.math.AbstractMatrix;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
+import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.MahoutTestCase;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
 import org.apache.mahout.math.decomposer.lanczos.LanczosState;
 import org.apache.mahout.math.function.Functions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
 
 public abstract class SolverTest extends MahoutTestCase {
   private static Logger log = LoggerFactory.getLogger(SolverTest.class);
@@ -89,12 +90,12 @@ public abstract class SolverTest extends MahoutTestCase {
     }
   }
 
-  public static void assertEigen(Matrix eigens, VectorIterable corpus, double errorMargin, boolean isSymmetric) {
+  public static void assertEigen(Matrix eigens, LinearOperator corpus, double errorMargin, boolean isSymmetric) {
     assertEigen(eigens, corpus, eigens.numRows(), errorMargin, isSymmetric);
   }
 
   public static void assertEigen(Matrix eigens,
-                                 VectorIterable corpus,
+                                 LinearOperator corpus,
                                  int numEigensToCheck,
                                  double errorMargin,
                                  boolean isSymmetric) {
@@ -104,12 +105,12 @@ public abstract class SolverTest extends MahoutTestCase {
     }
   }
 
-  public static void assertEigen(int i, Vector e, VectorIterable corpus, double errorMargin,
+  public static void assertEigen(int i, Vector e, LinearOperator corpus, double errorMargin,
       boolean isSymmetric) {
     if (e.getLengthSquared() == 0) {
       return;
     }
-    Vector afterMultiply = isSymmetric ? corpus.times(e) : corpus.timesSquared(e);
+    Vector afterMultiply = corpus.times(e);
     double dot = afterMultiply.dot(e);
     double afterNorm = afterMultiply.getLengthSquared();
     double error = 1 - Math.abs(dot / Math.sqrt(afterNorm * e.getLengthSquared()));
@@ -121,11 +122,11 @@ public abstract class SolverTest extends MahoutTestCase {
    * Builds up a consistently random (same seed every time) sparse matrix, with sometimes
    * repeated rows.
    */
-  public static Matrix randomSequentialAccessSparseMatrix(int numRows,
-                                                          int nonNullRows,
-                                                          int numCols,
-                                                          int entriesPerRow,
-                                                          double entryMean) {
+  public static AbstractMatrix randomSequentialAccessSparseMatrix(int numRows,
+                                                                  int nonNullRows,
+                                                                  int numCols,
+                                                                  int entriesPerRow,
+                                                                  double entryMean) {
     SparseRowMatrix m = new SparseRowMatrix(new int[]{numRows, numCols});
     //double n = 0;
     //Random r = RandomUtils.getRandom();

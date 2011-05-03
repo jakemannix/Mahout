@@ -17,6 +17,15 @@
 
 package org.apache.mahout.math.hadoop.decomposer;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -26,6 +35,7 @@ import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
+import org.apache.mahout.math.LinearOperator;
 import org.apache.mahout.math.MatrixSlice;
 import org.apache.mahout.math.OrthonormalityVerifier;
 import org.apache.mahout.math.SparseRowMatrix;
@@ -38,15 +48,6 @@ import org.apache.mahout.math.decomposer.SingularVectorVerifier;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * <p>Class for taking the output of an eigendecomposition (specified as a Path location), and verifies correctness,
@@ -76,7 +77,7 @@ public class EigenVerificationJob extends AbstractJob {
 
   private VectorIterable eigensToVerify;
 
-  private VectorIterable corpus;
+  private LinearOperator corpus;
 
   private double maxError;
 

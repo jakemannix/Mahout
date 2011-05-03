@@ -1,16 +1,19 @@
 package org.apache.mahout.math.decomposer.lanczos;
 
-import org.apache.mahout.math.DenseMatrix;
-import org.apache.mahout.math.Matrix;
-import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorIterable;
-
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.mahout.math.CardinalityException;
+import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.LinearOperator;
+import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.SquaredLinearOperator;
+import org.apache.mahout.math.Vector;
+
 public class LanczosState {
+  protected boolean isSymmetric;
   protected Matrix diagonalMatrix;
-  protected VectorIterable corpus;
+  protected LinearOperator corpus;
   protected double scaleFactor;
   protected int iterationNumber;
   protected int desiredRank;
@@ -19,8 +22,18 @@ public class LanczosState {
   protected Map<Integer, Double> singularValues;
   protected Map<Integer, Vector> singularVectors;
 
-  public LanczosState(VectorIterable corpus, int numCols, int desiredRank, Vector initialVector) {
-    this.corpus = corpus;
+  public LanczosState(LinearOperator corpus, int numCols, boolean isSymmetric, int desiredRank, Vector initialVector) {
+    this.isSymmetric = isSymmetric;
+    
+    if (isSymmetric) {    
+      if (corpus.numRows() != corpus.numCols()) {
+        throw new CardinalityException(corpus.numRows(), corpus.numCols());
+      }      
+      this.corpus = corpus;
+    } else {
+      this.corpus = new SquaredLinearOperator(corpus);
+    }
+    
     this.desiredRank = desiredRank;
     intitializeBasisAndSingularVectors(numCols, desiredRank);
     setBasisVector(0, initialVector);
@@ -47,7 +60,7 @@ public class LanczosState {
     return scaleFactor;
   }
 
-  public VectorIterable getCorpus() {
+  public LinearOperator getCorpus() {
     return corpus;
   }
 
@@ -80,6 +93,10 @@ public class LanczosState {
   }
 
   public void setSingularValue(int i, double value) {
-    singularValues.put(i, value);
+    if (isSymmetric) {
+      singularValues.put(i, value);
+    } else {
+      singularValues.put(i, Math.sqrt(value));
+    }
   }
 }

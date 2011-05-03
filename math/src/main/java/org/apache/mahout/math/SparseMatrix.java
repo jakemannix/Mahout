@@ -17,9 +17,9 @@
 
 package org.apache.mahout.math;
 
-import org.apache.mahout.math.map.OpenIntObjectHashMap;
-
 import java.util.Map;
+
+import org.apache.mahout.math.map.OpenIntObjectHashMap;
 
 /** Doubly sparse matrix. Implemented as a Map of RandomAccessSparseVector rows */
 public class SparseMatrix extends AbstractMatrix {

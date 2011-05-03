@@ -17,6 +17,7 @@
 
 package org.apache.mahout.math.decomposer.lanczos;
 
+import org.apache.mahout.math.AbstractMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.Vector;
@@ -41,7 +42,7 @@ public final class TestLanczosSolver extends SolverTest {
     Vector initialVector = new DenseVector(size);
     initialVector.assign(1d / Math.sqrt(size));
     LanczosSolver solver = new LanczosSolver();
-    LanczosState state = new LanczosState(m, size, desiredRank, initialVector);
+    LanczosState state = new LanczosState(m, size, true, desiredRank, initialVector);
     // set initial vector?
     solver.solve(state, desiredRank);
 
@@ -70,8 +71,8 @@ public final class TestLanczosSolver extends SolverTest {
     int rank = 50;
     Vector initialVector = new DenseVector(numColumns);
     initialVector.assign(1d / Math.sqrt(numColumns));
-    LanczosState state = new LanczosState(corpus, numColumns, rank, initialVector);
-    long time = timeLanczos(corpus, state, rank, false);
+    LanczosState state = new LanczosState(corpus, numColumns, false, rank, initialVector);
+    long time = timeLanczos(corpus, state, rank);
     assertTrue("Lanczos taking too long!  Are you in the debugger? :)", time < 10000);
     assertOrthonormal(state);
     for(int i = 0; i < rank/2; i++) {
@@ -87,19 +88,19 @@ public final class TestLanczosSolver extends SolverTest {
     int rank = 30;
     Vector initialVector = new DenseVector(numCols);
     initialVector.assign(1d / Math.sqrt(numCols));
-    LanczosState state = new LanczosState(corpus, numCols, rank, initialVector);
-    long time = timeLanczos(corpus, state, rank, true);
+    LanczosState state = new LanczosState(corpus, numCols, true, rank, initialVector);
+    long time = timeLanczos(corpus, state, rank);
     assertTrue("Lanczos taking too long!  Are you in the debugger? :)", time < 10000);
     //assertOrthonormal(state);
     //assertEigen(state, rank / 2, ERROR_TOLERANCE, true);
   }
 
-  public static long timeLanczos(Matrix corpus, LanczosState state, int rank, boolean symmetric) {
+  public static long timeLanczos(Matrix corpus, LanczosState state, int rank) {
     long start = System.currentTimeMillis();
 
     LanczosSolver solver = new LanczosSolver();
     // initialize!
-    solver.solve(state, rank, symmetric);
+    solver.solve(state, rank);
     
     long end = System.currentTimeMillis();
     return end - start;

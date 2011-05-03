@@ -17,9 +17,9 @@
 
 package org.apache.mahout.math.decomposer.hebbian;
 
+import org.apache.mahout.math.AbstractMatrix;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.Matrix;
-
 import org.apache.mahout.math.decomposer.AsyncEigenVerifier;
 import org.apache.mahout.math.decomposer.SingularVectorVerifier;
 import org.apache.mahout.math.decomposer.SolverTest;
@@ -33,7 +33,7 @@ import org.junit.Test;
  */
 public final class TestHebbianSolver extends SolverTest {
 
-  public static long timeSolver(Matrix corpus,
+  public static long timeSolver(AbstractMatrix corpus,
                                 double convergence,
                                 int maxNumPasses,
                                 TrainingState state) {
@@ -44,7 +44,7 @@ public final class TestHebbianSolver extends SolverTest {
                       state);
   }
 
-  public static long timeSolver(Matrix corpus,
+  public static long timeSolver(AbstractMatrix corpus,
                                 double convergence,
                                 int maxNumPasses,
                                 int desiredRank,
@@ -68,20 +68,20 @@ public final class TestHebbianSolver extends SolverTest {
 
 
 
-  public static long timeSolver(Matrix corpus, TrainingState state) {
+  public static long timeSolver(AbstractMatrix corpus, TrainingState state) {
     return timeSolver(corpus, state, 10);
   }
 
-  public static long timeSolver(Matrix corpus, TrainingState state, int rank) {
+  public static long timeSolver(AbstractMatrix corpus, TrainingState state, int rank) {
     return timeSolver(corpus, 0.01, 20, rank, state);
   }
 
   @Test
   public void testHebbianSolver() {
     int numColumns = 800;
-    Matrix corpus = randomSequentialAccessSparseMatrix(1000, 900, numColumns, 30, 1.0);
+    AbstractMatrix corpus = randomSequentialAccessSparseMatrix(1000, 900, numColumns, 30, 1.0);
     int rank = 50;
-    Matrix eigens = new DenseMatrix(rank, numColumns);
+    AbstractMatrix eigens = new DenseMatrix(rank, numColumns);
     TrainingState state = new TrainingState(eigens, null);
     long optimizedTime = timeSolver(corpus,
                                     0.00001,
