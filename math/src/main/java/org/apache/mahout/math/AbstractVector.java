@@ -17,11 +17,11 @@
 
 package org.apache.mahout.math;
 
-import java.util.Iterator;
-
 import org.apache.mahout.common.RandomUtils;
 import org.apache.mahout.math.function.DoubleDoubleFunction;
 import org.apache.mahout.math.function.DoubleFunction;
+
+import java.util.Iterator;
 
 /** Implementations of generic capabilities like sum of elements and dot products */
 public abstract class AbstractVector implements Vector {
@@ -271,7 +271,7 @@ public abstract class AbstractVector implements Vector {
       double value = e.get();
       d += value * (value - 2.0 * randomlyAccessed.getQuick(e.index()));
     }
-    assert d > -1.0e-9; // round-off errors should never be too far off!
+    //assert d > -1.0e-9; // round-off errors should never be too far off!
     return Math.abs(d);
   }
 
@@ -417,13 +417,15 @@ public abstract class AbstractVector implements Vector {
 
   @Override
   public Vector times(double x) {
+    if (x == 0.0) {
+      return like();
+    }
+
     Vector result = like().assign(this);
     if (x == 1.0) {
       return result;
     }
-    if (x == 0.0) {
-      return like();
-    }
+    
     Iterator<Element> iter = result.iterateNonZero();
     while (iter.hasNext()) {
       Element element = iter.next();

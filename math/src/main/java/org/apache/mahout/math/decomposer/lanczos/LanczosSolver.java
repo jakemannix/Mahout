@@ -62,6 +62,7 @@ public class LanczosSolver {
   private static final Logger log = LoggerFactory.getLogger(LanczosSolver.class);
 
   public static final double SAFE_MAX = 1.0e150;
+  private static final double NANOS_IN_MILLI = 1.0e6;
 
   public enum TimingSection {
     ITERATE, ORTHOGANLIZE, TRIDIAG_DECOMP, FINAL_EIGEN_CREATE
@@ -189,7 +190,10 @@ public class LanczosSolver {
     if (!times.containsKey(section)) {
       times.put(section, 0L);
     }
-    times.put(section, times.get(section) + (System.nanoTime() - startTimes.get(section)));
+    times.put(section, times.get(section) + System.nanoTime() - startTimes.get(section));
   }
 
+  public double getTimeMillis(TimingSection section) {
+    return (double) times.get(section) / NANOS_IN_MILLI;
+  }
 }
