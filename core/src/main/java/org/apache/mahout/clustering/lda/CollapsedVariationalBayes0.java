@@ -7,6 +7,8 @@ import com.google.common.io.Resources;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.Vector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -18,6 +20,7 @@ import java.util.Map;
 import java.util.Random;
 
 public class CollapsedVariationalBayes0 {
+  private static final Logger log = LoggerFactory.getLogger(CollapsedVariationalBayes0.class);
 
   private int numTopics;
   private int numTerms;
@@ -184,9 +187,11 @@ public class CollapsedVariationalBayes0 {
   }
 
   public void trainDocuments() {
+    long start = System.nanoTime();
     for(int docId = 0; docId < numDocuments; docId++) {
       trainDocument(docId);
     }
+    logTime("train documents", System.nanoTime() - start);
   }
 
   // the auxiliary gamma has been updated already in the train() step, now update docTopicCounts
@@ -207,29 +212,29 @@ public class CollapsedVariationalBayes0 {
     docNorms[docId] = di;
   }
 
-  private double[] aggregateTermUpdates(int term) {
-    double[] topicCounts = topicTermCounts[term];
-    Arrays.fill(topicCounts, 0d);
-    for(int docId = 0; docId < corpusWeights.length; docId++) {
-      for(int x = 0; x < numTopics; x++) {
-        Vector g = gammaTimesCorpus[docId][x];
-        topicCounts[x] += g.get(term);
-      }
-    }
-    return topicCounts;
-  }
-
   private void aggregateUpdates() {
+    long time = System.nanoTime();
     for(int docId = 0; docId < numDocuments; docId++) {
       aggregateDocUpdates(docId);
     }
+    logTime("updateDocuments", System.nanoTime() - time);
+    time = System.nanoTime();
     Arrays.fill(topicCounts, 0d);
-    for(int term = 0; term < topicTermCounts.length; term++) {
-      double[] termTopicCounts = aggregateTermUpdates(term);
-      for(int x=0; x<numTopics; x++) {
-        topicCounts[x] += termTopicCounts[x];
+    for(int term = 0; term < numTerms; term++) {
+      Arrays.fill(topicTermCounts[term], 0d);
+    }
+    for(int docId = 0; docId < corpusWeights.length; docId++) {
+      for(int x = 0; x < numTopics; x++) {
+        Vector g = gammaTimesCorpus[docId][x];
+        Iterator<Vector.Element> it = g.iterateNonZero();
+        while(it.hasNext()) {
+          Vector.Element e = it.next();
+          topicTermCounts[e.index()][x] += e.get();
+          topicCounts[x] += e.get();
+        }
       }
     }
+    logTime("udpateTerms", System.nanoTime() - time);
   }
 
   private double error(int docId) {
@@ -239,10 +244,12 @@ public class CollapsedVariationalBayes0 {
   }
 
   private double error() {
+    long time = System.nanoTime();
     double error = 0;
     for(int docId = 0; docId < numDocuments; docId++) {
       error += error(docId);
     }
+    logTime("error calculation", System.nanoTime() - time);
     return error / corpusSize;
   }
 
@@ -340,6 +347,10 @@ public class CollapsedVariationalBayes0 {
     }
   }
 
+  private static final void logTime(String label, long nanos) {
+   // System.out.println(label + " time: " + (double)(nanos)/1e6 + "ms");
+  }
+
   /**
    * usage: [java invoc] inputFile numTopics numTermsToPrint [alpha eta maxIter burnIn minFractionalChange]
    * @param args
@@ -353,6 +364,7 @@ public class CollapsedVariationalBayes0 {
       System.exit(1);
     }
     int numTopics = Integer.parseInt(args[1]);
+    long start = System.nanoTime();
     List<String> lines = Resources.readLines(Resources.getResource(args[0]), Charsets.UTF_8);
     Map<Integer, Map<String, Integer>> corpus = Maps.newHashMap();
     for(int i=0; i<lines.size(); i++) {
@@ -366,6 +378,7 @@ public class CollapsedVariationalBayes0 {
       }
       corpus.put(i, doc);
     }
+    logTime("corpus loading", System.nanoTime() - start);
     boolean userConfigured = args.length == 8;
     if(args.length > 3 && !userConfigured) {
       System.out.println("usage: [java invoc] inputFile numTopics numTermsToPrint"
@@ -379,10 +392,13 @@ public class CollapsedVariationalBayes0 {
     int burnInIterations = userConfigured ? Integer.parseInt(args[6]) : 10;
     float minFractionalErrorChange = userConfigured ? Float.parseFloat(args[7]) : 0f;
 
+    start = System.nanoTime();
     CollapsedVariationalBayes0 cvb0 = new CollapsedVariationalBayes0(corpus, numTopics, alpha, eta);
-    cvb0.initialize();
+    logTime("cvb0 initialization ", System.nanoTime() - start);
     double error = cvb0.iterateUntilConvergence(minFractionalErrorChange, maxIterations, burnInIterations);
+    start = System.nanoTime();
     cvb0.printTopics(numTermsToPrint);
+    logTime("printTopics", System.nanoTime() - start);
   }
   
 }
