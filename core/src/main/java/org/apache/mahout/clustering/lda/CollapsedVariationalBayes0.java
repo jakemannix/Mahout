@@ -348,7 +348,7 @@ public class CollapsedVariationalBayes0 {
   }
 
   private static final void logTime(String label, long nanos) {
-   // System.out.println(label + " time: " + (double)(nanos)/1e6 + "ms");
+    System.out.println(label + " time: " + (double)(nanos)/1e6 + "ms");
   }
 
   /**
