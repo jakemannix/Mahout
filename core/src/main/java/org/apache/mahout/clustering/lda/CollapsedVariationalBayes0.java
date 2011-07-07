@@ -28,12 +28,15 @@ public class CollapsedVariationalBayes0 {
   private double alpha;
   private double eta;
   private int corpusSize;
+  private int minDfCt;
+  private float maxDfPct;
 
   private Map<String, Integer> termIdMap;
   private String[] terms;  // of length numTerms;
   private double[] termWeights;  // length numTerms;
 
   private Vector[] corpusWeights; // length numDocs;
+  private double totalCorpusWeight;
   private Vector[][] gamma; // length numDocs, each of length numTopics
   private Vector[][] gammaTimesCorpus; // length numDocs, each of length numTopics
   private double[][] docTopicCounts; // length numDocs, each of length numTopics
@@ -43,11 +46,13 @@ public class CollapsedVariationalBayes0 {
   private double[] topicCounts; // sum_a (t(x,a)) = t_x
 
   public CollapsedVariationalBayes0(Map<Integer, Map<String, Integer>> corpus,
-      int numTopics, double alpha, double eta) {
-    initializeCorpusWeights(corpus);
+      int numTopics, double alpha, double eta, int minDfCt, float maxDfPct) {
     this.numTopics = numTopics;
     this.alpha = alpha;
     this.eta = eta;
+    this.minDfCt = minDfCt;
+    this.maxDfPct = maxDfPct;
+    initializeCorpusWeights(corpus);
     initialize();
   }
 
@@ -58,23 +63,36 @@ public class CollapsedVariationalBayes0 {
     numTerms = terms.length;
     termWeights = new double[terms.length];
     for(int t=0; t<terms.length; t++) {
-      // Calculate the iCF (inverse *collection* frequency, akin to the inverseDocumentFrequency)
-      termWeights[t] = Math.log(corpusSize / (1 + termCounts.get(terms[t])));
+      // Calculate the idf
+      termWeights[t] = Math.log(1 + (1 + numDocuments) / (1 + termCounts.get(terms[t])));
     }
     termIdMap = Maps.newHashMap();
     for(int t=0; t<terms.length; t++) {
       termIdMap.put(terms[t], t);
     }
     corpusWeights = new Vector[numDocuments];
+    totalCorpusWeight = 0;
+    int numNonZero = 0;
     for(int i=0; i<numDocuments; i++) {
       Map<String, Integer> document = corpus.get(i);
       Vector docVector = new RandomAccessSparseVector(numTerms, document.size());
       for(Map.Entry<String, Integer> e : document.entrySet()) {
-        int termId = termIdMap.get(e.getKey());
-        docVector.set(termId, e.getValue() * termWeights[termId]);
+        if(termIdMap.containsKey(e.getKey())) {
+          int termId = termIdMap.get(e.getKey());
+          docVector.set(termId, e.getValue() * termWeights[termId]);
+          numNonZero++;
+        }
       }
-      corpusWeights[i] = docVector;
+      double norm = docVector.norm(1);
+      if(norm > 0) {
+        corpusWeights[i] = docVector;
+        totalCorpusWeight += norm;
+      } else {
+        log.warn("Empty document vector at docId( " + i + ")");
+      }
     }
+    String s = "Initializing corpus with %d docs, %d terms, %d nonzero entries, total termWeight %f";
+    System.out.println(String.format(s, numDocuments, numTerms, numNonZero, totalCorpusWeight));
   }
 
   private Map<String, Integer> termCount(Map<Integer, Map<String, Integer>> corpus) {
@@ -82,12 +100,22 @@ public class CollapsedVariationalBayes0 {
     for(int docId : corpus.keySet()) {
       for(Map.Entry<String, Integer> e : corpus.get(docId).entrySet()) {
         String term = e.getKey();
-        int count = e.getValue();
         if(!termCounts.containsKey(term)) {
           termCounts.put(term, 0);
         }
-        termCounts.put(term, termCounts.get(term) + count);
-        corpusSize += count;
+        termCounts.put(term, termCounts.get(term) + 1); // only count document frequencies here
+      }
+    }
+    Iterator<Map.Entry<String,Integer>> it = termCounts.entrySet().iterator();
+    Map.Entry<String, Integer> e = null;
+    while(it.hasNext() && (e = it.next()) != null) {
+      // trim out terms which are too frequent (dfPct > maxDfPct) or too rare (dfCt < minDfCt)
+      float df = (float)e.getValue();
+      if(df/numDocuments > maxDfPct) {
+        System.out.println(e.getKey() + " occurs " + df + " times, removing");
+        it.remove();
+      } else if(df < minDfCt) {
+        it.remove();
       }
     }
     return termCounts;
@@ -109,6 +137,9 @@ public class CollapsedVariationalBayes0 {
     topicCounts = new double[numTopics];
     for(int i=0; i<corpusWeights.length; i++) {
       Vector document = corpusWeights[i];
+      if(document == null) {
+        continue;
+      }
       // initialize model
       gamma[i] = new Vector[numTopics];
       gammaTimesCorpus[i] = new Vector[numTopics];
@@ -157,6 +188,9 @@ public class CollapsedVariationalBayes0 {
 
   private void trainDocument(int docId) {
     Vector document = corpusWeights[docId];
+    if(document == null) {
+      return;
+    }
     Vector[] docModel = gamma[docId];
     Vector[] gammaTimesDocModel = gammaTimesCorpus[docId];
     double[] currentDocTopicCounts = docTopicCounts[docId];
@@ -197,6 +231,9 @@ public class CollapsedVariationalBayes0 {
   // the auxiliary gamma has been updated already in the train() step, now update docTopicCounts
   // and docNorms
   private void aggregateDocUpdates(int docId) {
+    if(corpusWeights[docId] == null) {
+      return;
+    }
     Vector[] txia = gammaTimesCorpus[docId];
     double[] tix = new double[numTopics];
     double di = 0;
@@ -224,6 +261,9 @@ public class CollapsedVariationalBayes0 {
       Arrays.fill(topicTermCounts[term], 0d);
     }
     for(int docId = 0; docId < corpusWeights.length; docId++) {
+      if(corpusWeights[docId] == null) {
+        continue;
+      }
       for(int x = 0; x < numTopics; x++) {
         Vector g = gammaTimesCorpus[docId][x];
         Iterator<Vector.Element> it = g.iterateNonZero();
@@ -239,8 +279,12 @@ public class CollapsedVariationalBayes0 {
 
   private double error(int docId) {
     Vector docTermCounts = corpusWeights[docId];
-    Vector expectedDocTermCounts = expectedDocumentCounts(docId);
-    return expectedDocTermCounts.minus(docTermCounts).norm(1);
+    if(docTermCounts == null) {
+      return 0;
+    } else {
+      Vector expectedDocTermCounts = expectedDocumentCounts(docId);
+      return expectedDocTermCounts.minus(docTermCounts).norm(1);
+    }
   }
 
   private double error() {
@@ -250,7 +294,7 @@ public class CollapsedVariationalBayes0 {
       error += error(docId);
     }
     logTime("error calculation", System.nanoTime() - time);
-    return error / corpusSize;
+    return error / totalCorpusWeight;
   }
 
   private Vector expectedDocumentCounts(int docId) {
@@ -352,7 +396,8 @@ public class CollapsedVariationalBayes0 {
   }
 
   /**
-   * usage: [java invoc] inputFile numTopics numTermsToPrint [alpha eta maxIter burnIn minFractionalChange]
+   * usage: [java invoc] inputFile numTopics numTermsToPrint \
+   * [alpha eta maxIter burnIn minFractionalChange minDfCt maxDfPct]
    * @param args
    * @throws IOException
    */
@@ -360,7 +405,7 @@ public class CollapsedVariationalBayes0 {
     // TODO: get these from args!
     if(args.length < 3) {
       System.out.println("usage: [java invoc] inputFile numTopics numTermsToPrint"
-                         + "[alpha eta maxIter burnIn minFractionalChange]");
+                         + "[alpha eta maxIter burnIn minFractionalChange minDfCt maxDfPct]");
       System.exit(1);
     }
     int numTopics = Integer.parseInt(args[1]);
@@ -371,6 +416,10 @@ public class CollapsedVariationalBayes0 {
       String line = lines.get(i);
       Map<String, Integer> doc = Maps.newHashMap();
       for(String s : line.split(" ")) {
+        s = s.replaceAll("\\W", "").toLowerCase().trim();
+        if(s.length() == 0) {
+          continue;
+        }
         if(!doc.containsKey(s)) {
           doc.put(s, 0);
         }
@@ -379,10 +428,10 @@ public class CollapsedVariationalBayes0 {
       corpus.put(i, doc);
     }
     logTime("corpus loading", System.nanoTime() - start);
-    boolean userConfigured = args.length == 8;
+    boolean userConfigured = args.length == 10;
     if(args.length > 3 && !userConfigured) {
       System.out.println("usage: [java invoc] inputFile numTopics numTermsToPrint"
-                         + "[alpha eta maxIter burnIn minFractionalChange]");
+                         + "[alpha eta maxIter burnIn minFractionalChange minDfCt maxDfPct]");
       System.exit(1);
     }
     int numTermsToPrint = userConfigured ? Integer.parseInt(args[2]) : 10;
@@ -391,9 +440,12 @@ public class CollapsedVariationalBayes0 {
     int maxIterations = userConfigured ? Integer.parseInt(args[5]) : 500;
     int burnInIterations = userConfigured ? Integer.parseInt(args[6]) : 10;
     float minFractionalErrorChange = userConfigured ? Float.parseFloat(args[7]) : 0f;
+    int minDfCt = userConfigured ? Integer.parseInt(args[8]) : 2;
+    float maxDfPct = userConfigured ? Float.parseFloat(args[9]) : 0.5f;
 
     start = System.nanoTime();
-    CollapsedVariationalBayes0 cvb0 = new CollapsedVariationalBayes0(corpus, numTopics, alpha, eta);
+    CollapsedVariationalBayes0 cvb0 = new CollapsedVariationalBayes0(corpus, numTopics, alpha, eta,
+        minDfCt, maxDfPct);
     logTime("cvb0 initialization ", System.nanoTime() - start);
     double error = cvb0.iterateUntilConvergence(minFractionalErrorChange, maxIterations, burnInIterations);
     start = System.nanoTime();
