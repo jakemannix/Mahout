@@ -27,13 +27,11 @@ public class CollapsedVariationalBayes0 {
   private int numDocuments;
   private double alpha;
   private double eta;
-  private int corpusSize;
   private int minDfCt;
   private float maxDfPct;
 
   private Map<String, Integer> termIdMap;
   private String[] terms;  // of length numTerms;
-  private double[] termWeights;  // length numTerms;
 
   private Vector[] corpusWeights; // length numDocs;
   private double totalCorpusWeight;
@@ -53,7 +51,41 @@ public class CollapsedVariationalBayes0 {
     this.minDfCt = minDfCt;
     this.maxDfPct = maxDfPct;
     initializeCorpusWeights(corpus);
-    initialize();
+    initializeModel();
+  }
+
+  public CollapsedVariationalBayes0(Vector[] corpus, String[] terms,
+      int numTopics, double alpha, double eta) {
+    this.numTopics = numTopics;
+    this.alpha = alpha;
+    this.eta = eta;
+    this.minDfCt = 0;
+    this.maxDfPct = 1.0f;
+    corpusWeights = corpus;
+    numDocuments = corpus.length;
+    this.terms = terms;
+    numTerms = terms.length;
+    termIdMap = Maps.newHashMap();
+    for(int t=0; t<terms.length; t++) {
+      termIdMap.put(terms[t], t);
+    }
+    postInitCorpus();
+    initializeModel();
+  }
+
+  private void postInitCorpus() {
+    totalCorpusWeight = 0;
+    int numNonZero = 0;
+    for(int i=0; i<numDocuments; i++) {
+      Vector v = corpusWeights[i];
+      double norm;
+      if(v != null && (norm = v.norm(1)) != 0) {
+        numNonZero++;
+        totalCorpusWeight += norm;
+      }
+    }
+    String s = "Initializing corpus with %d docs, %d terms, %d nonzero entries, total termWeight %f";
+    System.out.println(String.format(s, numDocuments, numTerms, numNonZero, totalCorpusWeight));
   }
 
   private void initializeCorpusWeights(Map<Integer, Map<String, Integer>> corpus) {
@@ -61,7 +93,7 @@ public class CollapsedVariationalBayes0 {
     Map<String, Integer> termCounts = termCount(corpus);
     terms = termCounts.keySet().toArray(new String[termCounts.size()]);
     numTerms = terms.length;
-    termWeights = new double[terms.length];
+    double[] termWeights = new double[terms.length];
     for(int t=0; t<terms.length; t++) {
       // Calculate the idf
       termWeights[t] = Math.log(1 + (1 + numDocuments) / (1 + termCounts.get(terms[t])));
@@ -71,8 +103,6 @@ public class CollapsedVariationalBayes0 {
       termIdMap.put(terms[t], t);
     }
     corpusWeights = new Vector[numDocuments];
-    totalCorpusWeight = 0;
-    int numNonZero = 0;
     for(int i=0; i<numDocuments; i++) {
       Map<String, Integer> document = corpus.get(i);
       Vector docVector = new RandomAccessSparseVector(numTerms, document.size());
@@ -80,19 +110,16 @@ public class CollapsedVariationalBayes0 {
         if(termIdMap.containsKey(e.getKey())) {
           int termId = termIdMap.get(e.getKey());
           docVector.set(termId, e.getValue() * termWeights[termId]);
-          numNonZero++;
         }
       }
-      double norm = docVector.norm(1);
+      double norm = docVector.getNumNondefaultElements();
       if(norm > 0) {
         corpusWeights[i] = docVector;
-        totalCorpusWeight += norm;
       } else {
         log.warn("Empty document vector at docId( " + i + ")");
       }
     }
-    String s = "Initializing corpus with %d docs, %d terms, %d nonzero entries, total termWeight %f";
-    System.out.println(String.format(s, numDocuments, numTerms, numNonZero, totalCorpusWeight));
+    postInitCorpus();
   }
 
   private Map<String, Integer> termCount(Map<Integer, Map<String, Integer>> corpus) {
@@ -121,7 +148,7 @@ public class CollapsedVariationalBayes0 {
     return termCounts;
   }
 
-  private void initialize() {
+  private void initializeModel() {
     Random random = new Random(1234);
     gamma = new Vector[numDocuments][];
     gammaTimesCorpus = new Vector[numDocuments][];
