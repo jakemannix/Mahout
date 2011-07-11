@@ -44,6 +44,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.lang.Boolean;
 
 /**
  * Can read in a {@link SequenceFile} of {@link Vector}s and dump
@@ -85,6 +86,9 @@ public final class VectorDumper {
     Option namesAsCommentsOpt = obuilder.withLongName("namesAsComments").withRequired(false).withDescription(
             "If using CSV output, optionally add a comment line for each NamedVector (if the vector is one) printing out the name")
             .withShortName("n").create();
+    Option sortVectorsOpt = obuilder.withLongName("sortVectors").withRequired(false).withDescription(
+            "Sort output key/value pairs of the vector entries in abs magnitude descending order")
+            .withShortName("sort").create();
     Option sizeOpt = obuilder.withLongName("sizeOnly").withRequired(false).
             withDescription("Dump only the size of the vector").withShortName("sz").create();
     Option helpOpt = obuilder.withLongName("help").withDescription("Print out help").withShortName("h")
@@ -92,7 +96,7 @@ public final class VectorDumper {
 
     Group group = gbuilder.withName("Options").withOption(seqOpt).withOption(outputOpt).withOption(
             dictTypeOpt).withOption(dictOpt).withOption(csvOpt).withOption(vectorAsKeyOpt).withOption(
-            printKeyOpt).withOption(sizeOpt).create();
+            printKeyOpt).withOption(sortVectorsOpt).withOption(helpOpt).withOption(sizeOpt).create();
 
     try {
       Parser parser = new Parser();
@@ -100,7 +104,6 @@ public final class VectorDumper {
       CommandLine cmdLine = parser.parse(args);
 
       if (cmdLine.hasOption(helpOpt)) {
-
         printHelp(group);
         return;
       }
@@ -114,6 +117,9 @@ public final class VectorDumper {
         if (cmdLine.hasOption(dictTypeOpt)) {
           dictionaryType = cmdLine.getValue(dictTypeOpt).toString();
         }
+
+        boolean sortVectors = cmdLine.hasOption(sortVectorsOpt);
+        log.info("Sort? " + sortVectors);
 
         String[] dictionary = null;
         if (cmdLine.hasOption(dictOpt)) {
@@ -174,7 +180,8 @@ public final class VectorDumper {
               if (useCSV){
                 fmtStr = VectorHelper.vectorToCSVString(vector, namesAsComments);
               } else {
-                fmtStr = vector.asFormatString();
+                fmtStr = sortVectors ? VectorHelper.vectorToSortedString(vector)
+                                     : vector.asFormatString();
               }
               writer.write(fmtStr);
               writer.write('\n');

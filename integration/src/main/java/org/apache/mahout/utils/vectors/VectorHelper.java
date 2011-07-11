@@ -21,7 +21,17 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.Double;
+import java.lang.Integer;
+import java.lang.Override;
+import java.lang.String;
+import java.lang.StringBuilder;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
 import java.util.regex.Pattern;
 
 import org.apache.hadoop.conf.Configuration;
@@ -47,6 +57,35 @@ public final class VectorHelper {
   public static String vectorToCSVString(Vector vector, boolean namesAsComments) throws IOException {
     Appendable bldr = new StringBuilder(2048);
     vectorToCSVString(vector, namesAsComments, bldr);
+    return bldr.toString();
+  }
+
+  public static String vectorToSortedString(Vector vector) {
+    List<Pair<Integer,Double>> vectorValues =
+        new ArrayList<Pair<Integer, Double>>(vector.getNumNondefaultElements());
+    Iterator<Vector.Element> it = vector.iterateNonZero();
+    while(it.hasNext()) {
+      Vector.Element e = it.next();
+      vectorValues.add(new Pair<Integer, Double>(e.index(), e.get()));
+    }
+    Collections.sort(vectorValues, new Comparator<Pair<Integer, Double>>() {
+      @Override public int compare(Pair<Integer, Double> x, Pair<Integer, Double> y) {
+        return y.getSecond().compareTo(x.getSecond());
+      }
+    });
+    Iterator<Pair<Integer,Double>> listIt = vectorValues.iterator();
+    StringBuilder bldr = new StringBuilder(2048);
+    bldr.append("{");
+    while(listIt.hasNext()) {
+      Pair<Integer,Double> p = listIt.next();
+      bldr.append(p.getFirst());
+      bldr.append(":");
+      bldr.append(p.getSecond());
+      bldr.append(",");
+    }
+    if(bldr.length() > 1) {
+      bldr.setCharAt(bldr.length() - 1, '}');
+    }
     return bldr.toString();
   }
 
