@@ -1,4 +1,4 @@
-package org.apache.mahout.clustering.lda;
+package org.apache.mahout.clustering.lda.cvb;
 
 import com.google.common.base.Charsets;
 import com.google.common.collect.Lists;
@@ -43,8 +43,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-public class CollapsedVariationalBayes0 extends AbstractJob {
-  private static final Logger log = LoggerFactory.getLogger(CollapsedVariationalBayes0.class);
+public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
+  private static final Logger log = LoggerFactory.getLogger(InMemoryCollapsedVariationalBayes0.class);
 
   private int numTopics;
   private int numTerms;
@@ -69,11 +69,11 @@ public class CollapsedVariationalBayes0 extends AbstractJob {
 
   private double[] topicCounts; // sum_a (t(x,a)) = t_x
 
-  private CollapsedVariationalBayes0() {
+  private InMemoryCollapsedVariationalBayes0() {
     // only for main usage
   }
 
-  public CollapsedVariationalBayes0(Map<Integer, Map<String, Integer>> corpus,
+  public InMemoryCollapsedVariationalBayes0(Map<Integer, Map<String, Integer>> corpus,
       int numTopics, double alpha, double eta, int minDfCt, double maxDfPct) {
     this.numTopics = numTopics;
     this.alpha = alpha;
@@ -84,8 +84,8 @@ public class CollapsedVariationalBayes0 extends AbstractJob {
     initializeModel();
   }
 
-  public CollapsedVariationalBayes0(Vector[] corpus, String[] terms,
-      int numTopics, double alpha, double eta) {
+  public InMemoryCollapsedVariationalBayes0(Vector[] corpus, String[] terms, int numTopics,
+      double alpha, double eta) {
     this.numTopics = numTopics;
     this.alpha = alpha;
     this.eta = eta;
@@ -788,12 +788,12 @@ public class CollapsedVariationalBayes0 extends AbstractJob {
       String reInferDocTopics = (String)cmdLine.getValue(reInferDocTopicsOpt);
 
       long start = System.nanoTime();
-      CollapsedVariationalBayes0 cvb0 = null;
+      InMemoryCollapsedVariationalBayes0 cvb0 = null;
       if(dictDirString == null) {
         Map<Integer, Map<String, Integer>> corpus = loadCorpus(inputDirString);
         logTime("text-based corpus loading", System.nanoTime() - start);
         start = System.nanoTime();
-        cvb0 = new CollapsedVariationalBayes0(corpus, numTopics, alpha, eta, minDfCt, maxDfPct);
+        cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, numTopics, alpha, eta, minDfCt, maxDfPct);
         logTime("cvb0 init", System.nanoTime() - start);
       } else {
         if(conf.get("fs.default.name") == null) {
@@ -806,7 +806,7 @@ public class CollapsedVariationalBayes0 extends AbstractJob {
         Vector[] corpus = loadVectors(inputDirString, conf);
         logTime("vector seqfile corpus loading", System.nanoTime() - start);
         start = System.nanoTime();
-        cvb0 = new CollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta);
+        cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta);
         logTime("cvb0 init", System.nanoTime() - start);
       }
       start = System.nanoTime();
@@ -894,6 +894,6 @@ public class CollapsedVariationalBayes0 extends AbstractJob {
   }
 
   public static void main(String[] args) throws Exception {
-    ToolRunner.run(new CollapsedVariationalBayes0(), args);
+    ToolRunner.run(new InMemoryCollapsedVariationalBayes0(), args);
   }
 }
