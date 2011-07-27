@@ -17,12 +17,6 @@
 
 package org.apache.mahout.common;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-
 import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -31,7 +25,13 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskAttemptID;
 
-public final class DummyRecordWriter<K, V> extends RecordWriter<K, V> {
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+public class DummyRecordWriter<K, V> extends RecordWriter<K, V> {
 
   private final Map<K, List<V>> data = new TreeMap<K, List<V>>();
 

@@ -583,15 +583,16 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   public void writeTopicModel(int numTerms, Path outputPath) {
     Map<Integer, Map<String, Double>> pTopicTerm = Maps.newHashMap();
     for(int term = 0; term < topicTermCounts.length; term++) {
-      double[] topicWordCount = topicTermCounts[term].clone();
+      double[] topicWordCount = topicTermCounts[term].clone(); // count of topic assignments for this term
       for(int x=0; x<numTopics; x++) {
-        topicWordCount[x] /= topicCounts[x];
+        topicWordCount[x] /= topicCounts[x]; // c(x, t) / c(x) = % of topic x which is t.
         if(!pTopicTerm.containsKey(x)) {
           pTopicTerm.put(x, Maps.<String, Double>newHashMap());
         }
         if(!pTopicTerm.get(x).containsKey(terms[term])) {
           pTopicTerm.get(x).put(terms[term], 0d);
         }
+        // p(x, t) += topicWordCount(x)
         pTopicTerm.get(x).put(terms[term], pTopicTerm.get(x).get(terms[term]) + topicWordCount[x]);
       }
     }

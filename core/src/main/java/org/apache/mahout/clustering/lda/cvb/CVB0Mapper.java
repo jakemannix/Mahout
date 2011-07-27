@@ -21,101 +21,126 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
 
   private CVBKey outputKey = new CVBKey();
   private CVBTuple outputValue = new CVBTuple();
+  protected CVBInference inference;
 
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
     super.setup(context);
-    Configuration conf = context.getConfiguration();
+    configure(context.getConfiguration());
+  }
+
+  public void configure(Configuration conf) {
     numTopics = conf.getInt(NUM_TOPICS, -1);
     eta = conf.getFloat(ETA, 0.1f);
     int numTerms = conf.getInt(NUM_TERMS, -1);
     alpha = conf.getFloat(ALPHA, 0.1f);
     etaTimesNumTerms = eta * numTerms;
     seed = conf.getLong(RANDOM_SEED, 1234L);
-    // throw exception on bad config
+    inference = new CVBInference(eta, alpha, numTerms);
   }
+
+  private int currentTermId;
+  private int currentDocId;
+  private double currentCount;
 
   @Override
   public void map(CVBKey key, CVBTuple value, Context ctx) throws IOException,
       InterruptedException {
-    double[] d = new double[numTopics];
-    double total = 0;
-    double[] topicTermCounts = value.getCount(AggregationBranch.TOPIC_TERM);
-    double[] topicCounts = value.getCount(AggregationBranch.TOPIC_SUM);
-    double[] docTopicCounts = value.getCount(AggregationBranch.DOC_TOPIC);
-    if(topicTermCounts == null || docTopicCounts == null || topicCounts == null) {
-      topicTermCounts = new double[numTopics];
-      topicCounts = new double[numTopics];
-      docTopicCounts = new double[numTopics];
-      initializeCounts(key.getDocId(), key.getTermId(), topicTermCounts, docTopicCounts, topicCounts);
+    if(!(value.hasAllData())) {
+      initializeCounts(key, value);
     }
-    for(int x = 0; x < numTopics; x++) {
-    // p(x | a, i) =~ ((t_ax + eta)/(t_x + eta*W)) * (d_ix + alpha)
-      d[x] = (topicTermCounts[x] + eta) / (topicCounts[x] + etaTimesNumTerms);
-      d[x] *= (docTopicCounts[x] + alpha);
-      total += d[x];
-    }
-    // L_1 normalize, and then multiply by the item count to get the "pseudo-counts" of
+    double[] d = inference.pTopicGivenTermInDoc(value);
+    // Now multiply by the item count to get the "pseudo-counts" of
     // C_ai * p(x|a,i) = t_aix = "number of times item a in document i was assigned to topic x"
     for(int x = 0; x < numTopics; x++) {
-      d[x] *= (value.getItemCount() / total);
+      d[x] *= value.getItemCount();
     }
     int termId = key.getTermId();
     int docId = key.getDocId();
-
-    // emit (a, -1, T) : { [t_aix] }
+    double itemCount = value.getItemCount();
+    currentTermId = termId;
+    currentDocId = docId;
+    currentCount = itemCount;
+    // emit (a, -1, T) : { (-, -, -), [t_aix], -, - }
     emitPseudoCountsForAggregating(termId, -1, d, ctx);
-    // emit (-1, i, T) : { [t_aix] }
+    // emit (-1, i, T) : { (-, -, -), -, [t_aix], - }
     emitPseudoCountsForAggregating(-1, docId, d, ctx);
-    // emit (-1,-1, T) : { [t_aix] }
+    // emit (-1,-1, T) : { (-, -, -), -, -, [t_aix] }
     emitPseudoCountsForAggregating(-1, -1, d, ctx);
 
-    double itemCount = value.getItemCount();
-    // emit (a, -1, F) : { c_ai }
-    emitCountForTagging(termId, -1, itemCount, ctx);
-    // emit (-1, i, F) : { c_ai }
-    emitCountForTagging(-1, docId, itemCount, ctx);
-    // emit (-1, -1, F) : { c_ai }
-    emitCountForTagging(-1, -1, itemCount, ctx);
+    outputValue.setTermId(termId);
+    outputValue.setDocumentId(docId);
+    outputValue.setItemCount(itemCount);
+    outputValue.clearCounts();
+    // emit (a, -1, F) : { (a, i, c_ai), -, -, - }
+    emitCountForTagging(termId, -1, ctx);
+    // emit (-1, i, F) : { (a, i, c_ai), -, -, - }
+    emitCountForTagging(-1, docId, ctx);
+    // emit (-1, -1, F) : { (a, i, c_ai), -, -, - }
+    emitCountForTagging(-1, -1, ctx);
 
   }
 
-  private void initializeCounts(int docId, int termId, double[] topicTermCounts,
-      double[] docTopicCounts, double[] topicCounts) {
+  private void initializeCounts(CVBKey key, CVBTuple tuple) {
+    int termId = key.getTermId();
+    int docId = key.getDocId();
+    double[] topicCounts = new double[numTopics];
     Random rand = new Random(seed);
     for(int x = 0; x < numTopics; x++) {
       topicCounts[x] = rand.nextDouble() * etaTimesNumTerms / eta;
     }
+    tuple.setCount(AggregationBranch.TOPIC_SUM, topicCounts);
+    double[] topicTermCounts = new double[numTopics];
     rand = new Random(seed * (termId + 1));
     for(int x = 0; x < numTopics; x++) {
       topicTermCounts[x] = rand.nextDouble() + eta;
     }
+    tuple.setCount(AggregationBranch.TOPIC_TERM, topicTermCounts);
+    double[] docTopicCounts = new double[numTopics];
     rand = new Random(seed * (docId + 1));
     for(int x = 0; x < numTopics; x++) {
       docTopicCounts[x] = rand.nextDouble();
     }
+    tuple.setCount(AggregationBranch.DOC_TOPIC, docTopicCounts);
   }
 
-  private void emitCountForTagging(int termId, int docId, double itemCount, Context ctx)
-      throws IOException, InterruptedException {
+  private void prepareOutput(int termId, int docId, boolean forAggregating) {
     outputKey.setTermId(termId);
     outputKey.setDocId(docId);
-    outputKey.setB(false);
-    outputValue.setItemCount(itemCount);
-    for(AggregationBranch branch : AggregationBranch.values()) {
-      outputValue.setCount(branch, null);
-    }
-    ctx.write(outputKey, outputValue);
+    outputKey.setB(forAggregating);
+    outputKey.setBranch(AggregationBranch.of(termId, docId));
+
+    outputValue.setItemCount(currentCount);
+    outputValue.setDocumentId(currentDocId);
+    outputValue.setTermId(currentTermId);
+    outputValue.clearCounts();
+  }
+
+  private void emitCountForTagging(int termId, int docId, Context ctx)
+      throws IOException, InterruptedException {
+    // emit (a, -1, F) | (-1, i, F) | (-1, -1, F) : { (a, i, c_ai), -, -, - }
+    prepareOutput(termId, docId, false);
+    write(ctx, outputKey, outputValue, false);
   }
 
   private void emitPseudoCountsForAggregating(int termId, int docId, double[] pseudoCounts, Context ctx)
       throws IOException, InterruptedException {
-    outputKey.setTermId(termId);
-    outputKey.setDocId(docId);
-    outputKey.setB(true);
-    outputValue.setItemCount(-1);
+    // emit: (a, -1, T) | (-1, i, T) | (-1, -1, T) : { (-, -, -), ... [t_aix] ... }
+    // termId and/or docId will be -1
+    prepareOutput(termId, docId, true);
     outputValue.setCount(AggregationBranch.of(termId, docId), pseudoCounts);
-    ctx.write(outputKey, outputValue);
+    write(ctx, outputKey, outputValue, true);
+  }
+
+  private void write(Context context, CVBKey key, CVBTuple tuple, boolean forAggregation)
+      throws IOException, InterruptedException {
+    if((forAggregation && tuple.hasData(AggregationBranch.of(key.getTermId(), key.getDocId())))
+       || (!forAggregation && !tuple.hasAnyData())) {
+      context.write(key, tuple);
+    } else {
+      throw new IllegalStateException("Wrong Mapper output: (forAggregation: " + forAggregation
+                                      + ")" + key + " => " + tuple);
+    }
   }
 
 }

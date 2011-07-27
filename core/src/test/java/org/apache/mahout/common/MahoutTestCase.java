@@ -17,9 +17,6 @@
 
 package org.apache.mahout.common;
 
-import java.io.*;
-import java.lang.reflect.Field;
-
 import com.google.common.base.Charsets;
 import com.google.common.io.Closeables;
 import org.apache.hadoop.conf.Configuration;
@@ -27,6 +24,14 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.junit.After;
 import org.junit.Before;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.lang.reflect.Field;
 
 public abstract class MahoutTestCase extends org.apache.mahout.math.MahoutTestCase {
 
@@ -49,11 +54,11 @@ public abstract class MahoutTestCase extends org.apache.mahout.math.MahoutTestCa
   @After
   public void tearDown() throws Exception {
     if (testTempDirPath != null) {
-      try {
-        fs.delete(testTempDirPath, true);
-      } catch (IOException e) {
-        throw new IllegalStateException("Test file not found");
-      }
+ //     try {
+ //       fs.delete(testTempDirPath, true);
+ //     } catch (IOException e) {
+ //       throw new IllegalStateException("Test file not found");
+ //     }
       testTempDirPath = null;
       fs = null;
     }
@@ -69,7 +74,7 @@ public abstract class MahoutTestCase extends org.apache.mahout.math.MahoutTestCa
       if (!fs.mkdirs(testTempDirPath)) {
         throw new IOException("Could not create " + testTempDirPath);
       }
-      fs.deleteOnExit(testTempDirPath);
+   //   fs.deleteOnExit(testTempDirPath);
     }
     return testTempDirPath;
   }
@@ -85,7 +90,7 @@ public abstract class MahoutTestCase extends org.apache.mahout.math.MahoutTestCa
   private Path getTestTempFileOrDirPath(String name, boolean dir) throws IOException {
     Path testTempDirPath = getTestTempDirPath();
     Path tempFileOrDir = fs.makeQualified(new Path(testTempDirPath, name));
-    fs.deleteOnExit(tempFileOrDir);
+ //   fs.deleteOnExit(tempFileOrDir);
     if (dir && !fs.mkdirs(tempFileOrDir)) {
       throw new IOException("Could not create " + tempFileOrDir);
     }

@@ -116,6 +116,12 @@ CLASSPATH=${CLASSPATH}:$JAVA_HOME/lib/tools.jar
 # so that filenames w/ spaces are handled correctly in loops below
 IFS=
 
+# add development dependencies to CLASSPATH
+for f in $MAHOUT_HOME/examples/target/dependency/*.jar; do
+  CLASSPATH=${CLASSPATH}:$f;
+done
+
+
 if [ $IS_CORE == 0 ] 
 then
   # add release dependencies to CLASSPATH
@@ -139,11 +145,6 @@ else
   CLASSPATH=${CLASSPATH}:$MAHOUT_HOME/examples/target/classes
   #CLASSPATH=${CLASSPATH}:$MAHOUT_HOME/core/src/main/resources
 fi
-
-# add development dependencies to CLASSPATH
-for f in $MAHOUT_HOME/examples/target/dependency/*.jar; do
-  CLASSPATH=${CLASSPATH}:$f;
-done
 
 
 # cygwin path translation
