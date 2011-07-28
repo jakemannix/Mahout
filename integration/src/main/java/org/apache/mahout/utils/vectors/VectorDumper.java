@@ -44,7 +44,6 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.lang.Boolean;
 
 /**
  * Can read in a {@link SequenceFile} of {@link Vector}s and dump
@@ -180,8 +179,8 @@ public final class VectorDumper {
               if (useCSV){
                 fmtStr = VectorHelper.vectorToCSVString(vector, namesAsComments);
               } else {
-                fmtStr = sortVectors ? VectorHelper.vectorToSortedString(vector)
-                                     : vector.asFormatString();
+                fmtStr = sortVectors ? VectorHelper.vectorToSortedString(vector, dictionary)
+                                     : vector.asFormatString(dictionary);
               }
               writer.write(fmtStr);
               writer.write('\n');

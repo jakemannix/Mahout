@@ -33,6 +33,8 @@ public interface Vector extends Cloneable, Iterable<Vector.Element> {
   /** @return a formatted String suitable for output */
   String asFormatString();
 
+  String asFormatString(String[] dictionary);
+
   /**
    * Assign the value to all elements of the receiver
    *

@@ -17,23 +17,6 @@
 
 package org.apache.mahout.utils.vectors;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.Double;
-import java.lang.Integer;
-import java.lang.Override;
-import java.lang.String;
-import java.lang.StringBuilder;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.regex.Pattern;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -46,6 +29,17 @@ import org.apache.mahout.common.iterator.sequencefile.SequenceFileDirIterable;
 import org.apache.mahout.math.NamedVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.map.OpenObjectIntHashMap;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.regex.Pattern;
 
 public final class VectorHelper {
 
@@ -60,24 +54,25 @@ public final class VectorHelper {
     return bldr.toString();
   }
 
-  public static String vectorToSortedString(Vector vector) {
-    List<Pair<Integer,Double>> vectorValues =
-        new ArrayList<Pair<Integer, Double>>(vector.getNumNondefaultElements());
+  public static String vectorToSortedString(Vector vector, String[] dictionary) {
+    List<Pair<String,Double>> vectorValues =
+        new ArrayList<Pair<String, Double>>(vector.getNumNondefaultElements());
     Iterator<Vector.Element> it = vector.iterateNonZero();
     while(it.hasNext()) {
       Vector.Element e = it.next();
-      vectorValues.add(new Pair<Integer, Double>(e.index(), e.get()));
+      vectorValues.add(Pair.of(dictionary != null ? dictionary[e.index()] : String.valueOf(e.index()),
+                               e.get()));
     }
-    Collections.sort(vectorValues, new Comparator<Pair<Integer, Double>>() {
-      @Override public int compare(Pair<Integer, Double> x, Pair<Integer, Double> y) {
+    Collections.sort(vectorValues, new Comparator<Pair<String, Double>>() {
+      @Override public int compare(Pair<String, Double> x, Pair<String, Double> y) {
         return y.getSecond().compareTo(x.getSecond());
       }
     });
-    Iterator<Pair<Integer,Double>> listIt = vectorValues.iterator();
+    Iterator<Pair<String,Double>> listIt = vectorValues.iterator();
     StringBuilder bldr = new StringBuilder(2048);
     bldr.append("{");
     while(listIt.hasNext()) {
-      Pair<Integer,Double> p = listIt.next();
+      Pair<String,Double> p = listIt.next();
       bldr.append(p.getFirst());
       bldr.append(":");
       bldr.append(p.getSecond());
