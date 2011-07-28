@@ -1,10 +1,13 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import com.google.common.base.Joiner;
+import com.google.common.collect.Lists;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.List;
 
 public class CVBAggregatingReducer extends Reducer<CVBKey, CVBTuple, CVBKey, CVBTuple> {
   private static final Logger log = LoggerFactory.getLogger(CVBAggregatingReducer.class);
@@ -14,13 +17,17 @@ public class CVBAggregatingReducer extends Reducer<CVBKey, CVBTuple, CVBKey, CVB
       throws IOException, InterruptedException {
     CVBTuple outputTuple = new CVBTuple();
     int numTuplesForKey = 0;
+    List<CVBTuple> all = Lists.newArrayList();
+    boolean BLOW_UP = false;
     for(CVBTuple tuple : values) {
+      all.add(new CVBTuple(tuple));
       numTuplesForKey++;
       for(AggregationBranch branch : AggregationBranch.values()) {
         double[] counts = tuple.getCount(branch);
         if(counts != null) {
           if(outputTuple.hasData(branch)) {
-            throw new IllegalStateException(outputTuple + " already has " + branch);
+            //throw new IllegalStateException(outputTuple + " already has " + branch);
+            BLOW_UP = true;
           } else {
             outputTuple.setCount(branch, counts);
           }
@@ -38,6 +45,9 @@ public class CVBAggregatingReducer extends Reducer<CVBKey, CVBTuple, CVBKey, CVB
             + outputTuple + " vs " + tuple);
         }
       }
+    }
+    if(BLOW_UP) {
+      throw new IllegalStateException(Joiner.on("\n").join(all));
     }
     if(numTuplesForKey != AggregationBranch.values().length) {
       throw new IllegalArgumentException("Key has wrong #tuples: " + numTuplesForKey + ", "

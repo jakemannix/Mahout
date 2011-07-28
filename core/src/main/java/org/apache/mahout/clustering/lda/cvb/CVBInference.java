@@ -20,11 +20,11 @@ public class CVBInference {
     double total = 0;
     for(int x = 0; x < numTopics; x++) {
     // p(x | a, i) =~ ((t_ax + eta)/(t_x + eta*W)) * (d_ix + alpha)
-      d[x] = (topicTermCounts[x] + eta) / (topicCounts[x] + etaTimesNumTerms);
-      d[x] *= (docTopicCounts[x] + alpha);
+      d[x] = (topicTermCounts[x] + eta) / (topicCounts[x] + etaTimesNumTerms); // p(a | x)
+      d[x] *= (docTopicCounts[x] + alpha); // p(x | i)
       total += d[x];
     }
-    // L_1 normalize, to get p(x|a,i)
+    // L_1 normalize, to get p(x|a,i) ~ p(a|x) * p(x|i)
     for(int x = 0; x < numTopics; x++) {
       d[x] /= total;
     }

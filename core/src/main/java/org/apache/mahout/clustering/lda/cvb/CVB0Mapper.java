@@ -50,7 +50,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
       initializeCounts(key, value);
     }
     double[] d = inference.pTopicGivenTermInDoc(value);
-    // Now multiply by the item count to get the "pseudo-counts" of
+    // Now multiply by the item count to get the "expected-counts" of
     // C_ai * p(x|a,i) = t_aix = "number of times item a in document i was assigned to topic x"
     for(int x = 0; x < numTopics; x++) {
       d[x] *= value.getItemCount();
@@ -61,17 +61,22 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     currentTermId = termId;
     currentDocId = docId;
     currentCount = itemCount;
-    // emit (a, -1, T) : { (-, -, -), [t_aix], -, - }
-    emitPseudoCountsForAggregating(termId, -1, d, ctx);
-    // emit (-1, i, T) : { (-, -, -), -, [t_aix], - }
-    emitPseudoCountsForAggregating(-1, docId, d, ctx);
-    // emit (-1,-1, T) : { (-, -, -), -, -, [t_aix] }
-    emitPseudoCountsForAggregating(-1, -1, d, ctx);
 
+    // emit (a, -1, T) : { (-, -, -), [t_aix], -, - }
+    emitExpectedCountsForAggregating(termId, -1, d, ctx);
+    // emit (-1, i, T) : { (-, -, -), -, [t_aix], - }
+    emitExpectedCountsForAggregating(-1, docId, d, ctx);
+    // emit (-1,-1, T) : { (-, -, -), -, -, [t_aix] }
+    emitExpectedCountsForAggregating(-1, -1, d, ctx);
+
+    // prepare the output tuple
     outputValue.setTermId(termId);
     outputValue.setDocumentId(docId);
     outputValue.setItemCount(itemCount);
+
+    // for tagging, you don't want any double[].
     outputValue.clearCounts();
+
     // emit (a, -1, F) : { (a, i, c_ai), -, -, - }
     emitCountForTagging(termId, -1, ctx);
     // emit (-1, i, F) : { (a, i, c_ai), -, -, - }
@@ -79,6 +84,17 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     // emit (-1, -1, F) : { (a, i, c_ai), -, -, - }
     emitCountForTagging(-1, -1, ctx);
 
+    // after reduce step:
+    // reducer for (a, -1):
+    // (a, i, T) : { (-, -, c_ai), [sum_a(t_aix)], -, - }
+
+    // reducer for (-1, i):
+    // (a, i, T) : { (-, -, c_ai), - , [sum_i(t_aix)], -}
+
+    // id. mapper
+    // reducer:
+    // (a, i, T) : { (-, -, c_ai), [sum_a(t_aix)], [sum_i(t_aix)],  []}
+    // you get 3 and only 3 tuples for this key.
   }
 
   private void initializeCounts(CVBKey key, CVBTuple tuple) {
@@ -123,7 +139,8 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     write(ctx, outputKey, outputValue, false);
   }
 
-  private void emitPseudoCountsForAggregating(int termId, int docId, double[] pseudoCounts, Context ctx)
+  private void emitExpectedCountsForAggregating(int termId, int docId, double[] pseudoCounts,
+      Context ctx)
       throws IOException, InterruptedException {
     // emit: (a, -1, T) | (-1, i, T) | (-1, -1, T) : { (-, -, -), ... [t_aix] ... }
     // termId and/or docId will be -1
