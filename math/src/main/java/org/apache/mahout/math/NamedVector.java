@@ -17,10 +17,10 @@
 
 package org.apache.mahout.math;
 
-import java.util.Iterator;
-
 import org.apache.mahout.math.function.DoubleDoubleFunction;
 import org.apache.mahout.math.function.DoubleFunction;
+
+import java.util.Iterator;
 
 public class NamedVector implements Vector {
 
@@ -70,6 +70,10 @@ public class NamedVector implements Vector {
   @Override
   public String asFormatString() {
     return toString();
+  }
+
+  @Override public String asFormatString(String[] dictionary) {
+    return delegate.asFormatString(dictionary);
   }
 
   @Override
