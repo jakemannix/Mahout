@@ -41,7 +41,8 @@ public class CVB0Driver extends AbstractJob {
   public static final String MODEL_TEMP_DIR = "topic_model_temp_dir";
   public static final String ITERATION_BLOCK_SIZE = "iteration_block_size";
   public static final String RANDOM_SEED = "random_seed";
-  
+  private static final String TEST_SET_PERCENTAGE = "test_set_percentage";
+
   @Override public int run(String[] args) throws Exception {
     addInputOption();
     addOutputOption();
@@ -58,6 +59,7 @@ public class CVB0Driver extends AbstractJob {
     addOption(MODEL_TEMP_DIR, "mt", "Path to intermediate model path (useful for restarting)", false);
     addOption(ITERATION_BLOCK_SIZE, "block", "Number of iterations per perplexity check", "10");
     addOption(RANDOM_SEED, "seed", "Random seed", false);
+    addOption(TEST_SET_PERCENTAGE, "tp", "% of data to hold out for testing", false);
 
     if(parseArguments(args) == null) {
       return -1;
@@ -82,10 +84,13 @@ public class CVB0Driver extends AbstractJob {
     long seed = hasOption(RANDOM_SEED)
               ? Long.parseLong(getOption(RANDOM_SEED))
               : System.nanoTime() % 10000;
+    float testFraction = hasOption(TEST_SET_PERCENTAGE)
+                       ? Float.parseFloat(getOption(TEST_SET_PERCENTAGE))
+                       : 0f;
 
     return run(getConf(), inputPath, topicModelOutputPath, numTopics, numTerms, alpha, eta,
         maxIterations, iterationBlockSize, convergenceDelta, dictionaryPath, docTopicOutputPath,
-        modelTempPath, seed);
+        modelTempPath, seed, testFraction);
   }
 
   private int getNumTerms(Configuration conf, Path dictionaryPath) throws IOException {
@@ -103,15 +108,16 @@ public class CVB0Driver extends AbstractJob {
   public int run(Configuration conf, Path inputPath, Path topicModelOutputPath, int numTopics,
       int numTerms, double alpha, double eta, int maxIterations, int iterationBlockSize,
       double convergenceDelta, Path dictionaryPath, Path docTopicOutputPath,
-      Path topicModelStateTempPath, long randomSeed)
+      Path topicModelStateTempPath, long randomSeed, float testFraction)
       throws ClassNotFoundException, IOException, InterruptedException {
     String infoString = "Will run Collapsed Variational Bayes (0th-derivative approximation) " +
       "learning for LDA on {} (numTerms: {}), finding {}-topics, with document/topic prior {}, " +
       "topic/term prior {}.  Maximum iterations to run will be {}, unless the change in " +
       "perplexity is less than {}.  Topic model output (p(term|topic) for each topic) will be " +
-      "stored {}.  Random initialization seed is {}\n";
+      "stored {}.  Random initialization seed is {}, holding out {} of the data for perplexity " +
+      "check\n";
     log.info(infoString, new Object[] {inputPath, numTerms, numTopics, alpha, eta, maxIterations,
-        convergenceDelta, topicModelOutputPath, randomSeed});
+        convergenceDelta, topicModelOutputPath, randomSeed, testFraction});
     infoString = dictionaryPath == null
                ? "" : "Dictionary to be used located " + dictionaryPath.toString() + "\n";
     infoString += docTopicOutputPath == null
@@ -130,6 +136,7 @@ public class CVB0Driver extends AbstractJob {
     conf.set(CVB0Mapper.ALPHA, String.valueOf(alpha));
     conf.set(CVB0Mapper.ETA, String.valueOf(eta));
     conf.set(CVB0Mapper.RANDOM_SEED, String.valueOf(randomSeed));
+    conf.set(CVB0Mapper.TEST_SET_PCT, String.valueOf(testFraction));
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations && previousPerplexity - perplexity > convergenceDelta) {
       iterationNumber++;
@@ -265,7 +272,7 @@ public class CVB0Driver extends AbstractJob {
     Job job = new Job(conf, jobName);
     job.setMapperClass(CVB0Mapper.class);
     job.setReducerClass(CVB0Reducer.class);
-    //job.setCombinerClass(CVB0Combiner.class);
+    job.setCombinerClass(CVB0Combiner.class);
     job.setGroupingComparatorClass(CVB0GroupingComparator.class);
     job.setSortComparatorClass(CVBSortingComparator.class);
     job.setPartitionerClass(CVB0Partitioner.class);

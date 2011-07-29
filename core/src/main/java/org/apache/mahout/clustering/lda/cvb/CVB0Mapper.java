@@ -12,12 +12,14 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
   public static final String ALPHA = CVB0Mapper.class.getName() + ".alpha";
   public static final String NUM_TERMS = CVB0Mapper.class.getName() + ".numTerms";
   public static final String RANDOM_SEED = CVB0Mapper.class.getName() + ".seed";
+  public static final String TEST_SET_PCT = CVB0Mapper.class.getName() + ".testSetFraction";
 
   private int numTopics;
   private double eta;
   private double alpha;
   private double etaTimesNumTerms;
   private long seed;
+  private float testSetFraction;
 
   private CVBKey outputKey = new CVBKey();
   private CVBTuple outputValue = new CVBTuple();
@@ -36,6 +38,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     alpha = conf.getFloat(ALPHA, 0.1f);
     etaTimesNumTerms = eta * numTerms;
     seed = conf.getLong(RANDOM_SEED, 1234L);
+    testSetFraction = conf.getFloat(TEST_SET_PCT, 0f);
     inference = new CVBInference(eta, alpha, numTerms);
   }
 
@@ -43,9 +46,16 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
   private int currentDocId;
   private double currentCount;
 
+  private boolean docInTestSet = false;
+
   @Override
   public void map(CVBKey key, CVBTuple value, Context ctx) throws IOException,
       InterruptedException {
+    if(testSetFraction > 0 && (key.getDocId() % (int)(1/testSetFraction) == 0)) {
+      docInTestSet = true;
+    } else {
+      docInTestSet = false;
+    }
     if(!(value.hasAllData())) {
       initializeCounts(key, value);
     }
@@ -139,13 +149,21 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     write(ctx, outputKey, outputValue, false);
   }
 
-  private void emitExpectedCountsForAggregating(int termId, int docId, double[] pseudoCounts,
+  private void emitExpectedCountsForAggregating(int termId, int docId, double[] expectedCounts,
       Context ctx)
       throws IOException, InterruptedException {
+    // for documents in the test set, we don't want to emit expected counts to the overall
+    // topic model, but for efficiency's sake, we *will* train the doc/topic probabilities for
+    // these.  So if the docId passed into this method is < 0, we're emitting for branches
+    // TOPIC_SUM or TOPIC_TERM, and for held-out data we *don't* emit.
+    if(docInTestSet && docId < 0) {
+      return;
+    }
+
     // emit: (a, -1, T) | (-1, i, T) | (-1, -1, T) : { (-, -, -), ... [t_aix] ... }
     // termId and/or docId will be -1
     prepareOutput(termId, docId, true);
-    outputValue.setCount(AggregationBranch.of(termId, docId), pseudoCounts);
+    outputValue.setCount(AggregationBranch.of(termId, docId), expectedCounts);
     write(ctx, outputKey, outputValue, true);
   }
 
