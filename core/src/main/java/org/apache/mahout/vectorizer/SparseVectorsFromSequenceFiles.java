@@ -27,6 +27,9 @@ import org.apache.commons.cli2.builder.GroupBuilder;
 import org.apache.commons.cli2.commandline.Parser;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.mapreduce.InputFormat;
+import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.mahout.common.AbstractJob;
@@ -34,6 +37,9 @@ import org.apache.mahout.common.CommandLineUtil;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.vectorizer.collocations.llr.LLRReducer;
 import org.apache.mahout.vectorizer.common.PartialVectorMerger;
+import org.apache.mahout.vectorizer.document.AbstractTokenizerMapper;
+import org.apache.mahout.vectorizer.document.SequenceFileTokenizerMapper;
+import org.apache.mahout.vectorizer.document.TextFormatTokenizerMapper;
 import org.apache.mahout.vectorizer.tfidf.TFIDFConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,6 +87,16 @@ public final class SparseVectorsFromSequenceFiles extends AbstractJob {
     Option weightOpt = obuilder.withLongName("weight").withRequired(false).withArgument(
       abuilder.withName("weight").withMinimum(1).withMaximum(1).create()).withDescription(
       "The kind of weight to use. Currently TF or TFIDF").withShortName("wt").create();
+
+    Option inputFormatOpt = obuilder.withLongName("inputFormat").withRequired(false).withArgument(
+        abuilder.withName("inputFormat").withMinimum(1).withMaximum(1).create()).withDescription(
+        "InputFormat of input.  Currently seq|text (SequenceFileInputFormat or TextInputFormat)")
+        .withShortName("if").create();
+
+    Option separatorStrOpt = obuilder.withLongName("separatorString").withRequired(false)
+        .withArgument(abuilder.withName("separatorString").withMinimum(1).withMaximum(1).create())
+        .withDescription("For TextInputFormat, separator which breaks 'docId' from 'document'")
+        .withShortName("sep").create();
     
     Option minDFOpt = obuilder.withLongName("minDF").withRequired(false).withArgument(
       abuilder.withName("minDF").withMinimum(1).withMaximum(1).create()).withDescription(
@@ -136,7 +152,7 @@ public final class SparseVectorsFromSequenceFiles extends AbstractJob {
         .withOption(maxDFPercentOpt).withOption(weightOpt).withOption(powerOpt).withOption(minLLROpt)
         .withOption(numReduceTasksOpt).withOption(maxNGramSizeOpt).withOption(overwriteOutput)
         .withOption(helpOpt).withOption(sequentialAccessVectorOpt).withOption(namedVectorOpt)
-        .withOption(logNormalizeOpt)
+        .withOption(logNormalizeOpt).withOption(inputFormatOpt).withOption(separatorStrOpt)
         .create();
     try {
       Parser parser = new Parser();
@@ -237,10 +253,35 @@ public final class SparseVectorsFromSequenceFiles extends AbstractJob {
         logNormalize = true;
       }
 
+      String inputFormat = SequenceFileInputFormat.class.getName();
+      String tokenizerMapper = SequenceFileTokenizerMapper.class.getName();
+      if(cmdLine.hasOption(inputFormatOpt)) {
+        String fmtStr = cmdLine.getValue(inputFormatOpt).toString();
+        if(fmtStr.equalsIgnoreCase("text")) {
+          inputFormat = TextInputFormat.class.getName();
+          tokenizerMapper = TextFormatTokenizerMapper.class.getName();
+          if(cmdLine.hasOption(separatorStrOpt)) {
+            getConf().set(TextFormatTokenizerMapper.SEPARATOR,
+                cmdLine.getValue(separatorStrOpt).toString());
+          }
+        } else if(fmtStr.equalsIgnoreCase("seq")) {
+          inputFormat = SequenceFileInputFormat.class.getName();
+          tokenizerMapper = SequenceFileTokenizerMapper.class.getName();
+        } else {
+          throw new IllegalArgumentException("Invalid input format: " + fmtStr);
+        }
+      }
+
+      Class<? extends InputFormat> inputFormatClass = Class.forName(inputFormat)
+          .asSubclass(InputFormat.class);
+      Class<? extends AbstractTokenizerMapper> mapperClass = Class.forName(tokenizerMapper)
+          .asSubclass(AbstractTokenizerMapper.class);
+
       Configuration conf = getConf();
       HadoopUtil.delete(conf, outputDir);
       Path tokenizedPath = new Path(outputDir, DocumentProcessor.TOKENIZED_DOCUMENT_OUTPUT_FOLDER);
-      DocumentProcessor.tokenizeDocuments(inputDir, analyzerClass, tokenizedPath, conf);
+      DocumentProcessor.tokenizeDocuments(inputDir, inputFormatClass, mapperClass,
+          analyzerClass, tokenizedPath, conf);
       
       boolean sequentialAccessOutput = false;
       if (cmdLine.hasOption(sequentialAccessVectorOpt)) {

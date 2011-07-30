@@ -17,11 +17,10 @@
 
 package org.apache.mahout.vectorizer;
 
-import java.io.IOException;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.InputFormat;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
@@ -30,7 +29,10 @@ import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.StringTuple;
+import org.apache.mahout.vectorizer.document.AbstractTokenizerMapper;
 import org.apache.mahout.vectorizer.document.SequenceFileTokenizerMapper;
+
+import java.io.IOException;
 
 /**
  * This class converts a set of input documents in the sequence file format of {@link StringTuple}s.The
@@ -52,7 +54,16 @@ public final class DocumentProcessor {
   private DocumentProcessor() {
 
   }
-  
+
+  public static void tokenizeDocuments(Path input,
+                                       Class<? extends Analyzer> analyzerClass,
+                                       Path output,
+                                       Configuration baseConf)
+      throws ClassNotFoundException, IOException, InterruptedException {
+    tokenizeDocuments(input, SequenceFileInputFormat.class, SequenceFileTokenizerMapper.class,
+        analyzerClass, output, baseConf);
+  }
+
   /**
    * Convert the input documents into token array using the {@link StringTuple} The input documents has to be
    * in the {@link org.apache.hadoop.io.SequenceFile} format
@@ -65,6 +76,8 @@ public final class DocumentProcessor {
    *          The Lucene {@link Analyzer} for tokenizing the UTF-8 text
    */
   public static void tokenizeDocuments(Path input,
+                                       Class<? extends InputFormat> inputFormatClass,
+                                       Class<? extends AbstractTokenizerMapper> mapperClass,
                                        Class<? extends Analyzer> analyzerClass,
                                        Path output,
                                        Configuration baseConf)
@@ -84,8 +97,8 @@ public final class DocumentProcessor {
     FileInputFormat.setInputPaths(job, input);
     FileOutputFormat.setOutputPath(job, output);
     
-    job.setMapperClass(SequenceFileTokenizerMapper.class);
-    job.setInputFormatClass(SequenceFileInputFormat.class);
+    job.setMapperClass(mapperClass);
+    job.setInputFormatClass(inputFormatClass);
     job.setNumReduceTasks(0);
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     HadoopUtil.delete(conf, output);

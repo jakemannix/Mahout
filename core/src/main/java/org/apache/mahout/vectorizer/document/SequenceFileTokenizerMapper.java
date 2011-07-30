@@ -17,54 +17,11 @@
 
 package org.apache.mahout.vectorizer.document;
 
-import java.io.IOException;
-import java.io.StringReader;
-
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
-
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.mahout.common.StringTuple;
-import org.apache.mahout.vectorizer.DefaultAnalyzer;
-import org.apache.mahout.vectorizer.DocumentProcessor;
 
 /**
  * Tokenizes a text document and outputs tokens in a StringTuple
  */
-public class SequenceFileTokenizerMapper extends Mapper<Text, Text, Text, StringTuple> {
+public class SequenceFileTokenizerMapper extends AbstractTokenizerMapper<Text, Text> {
 
-  private Analyzer analyzer;
-
-  @Override
-  protected void map(Text key, Text value, Context context) throws IOException, InterruptedException {
-    TokenStream stream = analyzer.reusableTokenStream(key.toString(), new StringReader(value.toString()));
-    CharTermAttribute termAtt = stream.addAttribute(CharTermAttribute.class);
-    StringTuple document = new StringTuple();
-    stream.reset();
-    while (stream.incrementToken()) {
-      if (termAtt.length() > 0) {
-        document.add(new String(termAtt.buffer(), 0, termAtt.length()));
-      }
-    }
-    context.write(key, document);
-  }
-
-  @Override
-  protected void setup(Context context) throws IOException, InterruptedException {
-    super.setup(context);
-    try {
-      ClassLoader ccl = Thread.currentThread().getContextClassLoader();
-      Class<?> cl = ccl
-          .loadClass(context.getConfiguration().get(DocumentProcessor.ANALYZER_CLASS, DefaultAnalyzer.class.getName()));
-      analyzer = (Analyzer) cl.newInstance();
-    } catch (ClassNotFoundException e) {
-      throw new IllegalStateException(e);
-    } catch (InstantiationException e) {
-      throw new IllegalStateException(e);
-    } catch (IllegalAccessException e) {
-      throw new IllegalStateException(e);
-    }
-  }
 }
