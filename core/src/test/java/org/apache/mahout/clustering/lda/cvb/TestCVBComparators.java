@@ -19,15 +19,15 @@ public class TestCVBComparators extends MahoutTestCase {
     key2.setTermId(1);
     key2.setDocId(101);
     key2.setB(true);
-    compareBothWays(key1, key2, 0, -1);
+    compareBothWays(key1, key2, 0, 1);
     key1.setB(true);
     compareBothWays(key1, key2, 0, 0);
     key1.setTermId(2);
-    compareBothWays(key1, key2, 1, 1);
-    key2.setDocId(102);
-    compareBothWays(key1, key2, 1, 1);
-    key1.setTermId(1);
     compareBothWays(key1, key2, -1, -1);
+    key2.setDocId(102);
+    compareBothWays(key1, key2, -1, -1);
+    key1.setTermId(1);
+    compareBothWays(key1, key2, 1, 1);
   }
 
   public static void compareBothWays(CVBKey key1, CVBKey key2, int expectedNoBoolean, int expected)
