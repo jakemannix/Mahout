@@ -1,10 +1,12 @@
 package org.apache.mahout.clustering.lda.cvb;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -18,6 +20,7 @@ import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.IntPairWritable;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
+import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.vectorizer.common.PartialVectorMergeReducer;
 import org.apache.mahout.vectorizer.common.PartialVectorMerger;
@@ -145,7 +148,9 @@ public class CVB0Driver extends AbstractJob {
       Path stage1output = stage1OutputPath(topicModelStateTempPath, iterationNumber - 1);
       runIteration(conf, stage1input, stage1output, iterationNumber);
       if(iterationNumber % iterationBlockSize == 0) {
-        log.warn("We would normally be spitting out perplexity here");
+        previousPerplexity = perplexity;
+        perplexity = calculatePerplexity(conf, stage1output);
+        log.info("current perplexity = " + perplexity);
       }
     }
     log.info("Completed {} iterations in {} seconds",
@@ -163,6 +168,43 @@ public class CVB0Driver extends AbstractJob {
     }
     return 0;
   }
+
+  private double calculatePerplexity(Configuration conf, Path stage1output) throws IOException,
+      ClassNotFoundException, InterruptedException {
+    String jobName = "Calculating perplexity for " + stage1output;
+    log.info("About to run: " + jobName);
+    Job job = new Job(conf, jobName);
+    job.setMapperClass(PerplexityCheckingMapper.class);
+    job.setReducerClass(PerplexityCheckingReducer.class);
+    job.setInputFormatClass(SequenceFileInputFormat.class);
+    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+    job.setOutputKeyClass(NullWritable.class);
+    job.setOutputValueClass(DoubleWritable.class);
+    FileInputFormat.addInputPath(job, stage1output);
+    Path outputPath = new Path(stage1output.getParent(), "perplexity");
+    FileOutputFormat.setOutputPath(job, outputPath);
+    HadoopUtil.delete(conf, outputPath);
+    job.setJarByClass(PerplexityCheckingMapper.class);
+    if(!job.waitForCompletion(true)) {
+      throw new InterruptedException("Failed to calculate perplexity for: " + stage1output);
+    }
+    double perplexity = 0;
+    FileSystem fs = FileSystem.get(conf);
+    FileStatus[] statuses = fs.listStatus(outputPath, PathFilters.partFilter());
+    for(FileStatus status : statuses) {
+      log.info("reading perplexity from: " + status.getPath());
+      int i = 0;
+      SequenceFile.Reader reader = new SequenceFile.Reader(fs, status.getPath(), conf);
+      DoubleWritable d = new DoubleWritable();
+      while(reader.next(NullWritable.get(), d)) {
+        perplexity += d.get();
+        i++;
+      }
+      log.info("read " + i + " perplexity values");
+    }
+    return perplexity;
+  }
+
 
   private Job writeTopicModel(Path input, Path output)
       throws IOException, ClassNotFoundException, InterruptedException {

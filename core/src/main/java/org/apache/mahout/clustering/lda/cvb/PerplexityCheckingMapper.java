@@ -19,7 +19,7 @@ public class PerplexityCheckingMapper extends Mapper<CVBKey, CVBTuple, CVBKey, C
   private double alpha;
   private double etaTimesNumTerms;
   private long seed;
-  private float testSetFraction;
+  private int testSetPartition;
 
   private CVBKey outputKey = new CVBKey();
   private CVBTuple outputValue = new CVBTuple();
@@ -38,21 +38,24 @@ public class PerplexityCheckingMapper extends Mapper<CVBKey, CVBTuple, CVBKey, C
     alpha = conf.getFloat(ALPHA, 0.1f);
     etaTimesNumTerms = eta * numTerms;
     seed = conf.getLong(RANDOM_SEED, 1234L);
-    testSetFraction = conf.getFloat(TEST_SET_PCT, 0f);
+    testSetPartition = (int) (1/conf.getFloat(TEST_SET_PCT, 0.1f));
     inference = new CVBInference(eta, alpha, numTerms);
   }
 
   @Override
   public void map(CVBKey key, CVBTuple value, Context context)
       throws IOException, InterruptedException {
-    if(testSetFraction > 0 && (key.getDocId() % (int)(1/testSetFraction) == 0)) {
-      double[] gamma = inference.gammaTopicGivenTermInDoc(value);
-      key.setB(true);
-      key.setTermId(-1);
-      key.setDocId(key.getDocId());
-      value.setDocumentId(key.getDocId());
-      value.setCount(AggregationBranch.DOC_TOPIC, gamma);
-      context.write(key, value);
+    if(testSetPartition > 0) {
+      int docId = key.getDocId();
+      if(docId % testSetPartition == 0) {
+        double[] gamma = inference.gammaTopicGivenTermInDoc(value);
+        key.setB(true);
+        key.setTermId(-1);
+        key.setDocId(docId);
+        value.setDocumentId(docId);
+        value.setCount(AggregationBranch.DOC_TOPIC, gamma);
+        context.write(key, value);
+      }
     }
   }
 
