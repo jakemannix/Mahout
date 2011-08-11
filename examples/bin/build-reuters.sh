@@ -112,10 +112,10 @@ elif [ "x$clustertype" == "xlda" ]; then
   $MAHOUT seq2sparse \
     -i mahout-work/reuters-out-seqdir/ \
     -o mahout-work/reuters-out-seqdir-sparse-lda \
-    -wt tf -seq -nr 3 \
+    -wt tfidf -seq -nr 3 \
   && \
   $MAHOUT lda \
-    -i mahout-work/reuters-out-seqdir-sparse-lda/tf-vectors \
+    -i mahout-work/reuters-out-seqdir-sparse-lda/tfidf-vectors \
     -o mahout-work/reuters-lda -k 20 -v 50000 -ow -x 20 \
   && \
   $MAHOUT ldatopics \
