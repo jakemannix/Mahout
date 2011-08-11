@@ -18,6 +18,7 @@
 package org.apache.mahout.utils.vectors;
 
 import com.google.common.io.Closeables;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -41,6 +42,7 @@ public class RowIdJob extends AbstractJob {
 
     addInputOption();
     addOutputOption();
+    parseArguments(strings);
 
     Configuration conf = getConf();
     FileSystem fs = FileSystem.get(conf);
