@@ -1,5 +1,7 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import java.io.IOException;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -24,8 +26,6 @@ import org.apache.mahout.vectorizer.common.PartialVectorMerger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-
 /**
  * ./bin/mahout distcvb0 --input /path/to/drm_data --output /output --num_topics
  */
@@ -41,7 +41,7 @@ public class CVB0Driver extends AbstractJob {
   public static final String MODEL_TEMP_DIR = "topic_model_temp_dir";
   public static final String ITERATION_BLOCK_SIZE = "iteration_block_size";
   public static final String RANDOM_SEED = "random_seed";
-  private static final String TEST_SET_PERCENTAGE = "test_set_percentage";
+  public static final String TEST_SET_PERCENTAGE = "test_set_percentage";
 
   @Override public int run(String[] args) throws Exception {
     addInputOption();
@@ -227,7 +227,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runStage0(Configuration conf, Path inputPath, Path topicModelStateTempPath)
       throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage0, converting " + inputPath + "to CVB format";
+    String jobName = "Stage 0, converting " + inputPath + " to CVB format";
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(DistributedRowMatrixInputMapper.class);
@@ -267,7 +267,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runIterationStage1(Configuration conf, Path stage1input, Path stage1output,
       int iterationNumber) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage1, iteration " + iterationNumber + ", input path: " + stage1input;
+    String jobName = "Stage 1, iteration " + iterationNumber + ", input path: " + stage1input;
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(CVB0Mapper.class);
@@ -293,7 +293,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runIterationStage2(Configuration conf, Path stage1input, Path stage1output,
       int iterationNumber) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage2, iteration " + iterationNumber + ", input path: " + stage1output;
+    String jobName = "Stage 2, iteration " + iterationNumber + ", input path: " + stage1output;
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(Mapper.class);
