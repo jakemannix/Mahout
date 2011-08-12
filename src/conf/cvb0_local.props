@@ -1,0 +1,19 @@
+# The following parameters must be specified
+#i|input = The Directory on HDFS containing the collapsed, properly formatted files having one doc per line, or the path to a SequenceFile<IntWritable,VectorWritable, as long as the next option (dictionary) is specified
+#d|dictionary = The path to the term-dictionary format is that of the output of seq2sparse (ie SequenceFile<Writable,IntWritable> : term -> termId)
+#do|docOutputFile = File to write out p(topic | docid)
+#to|topicOutputFile = File to write out p(term | topic)
+#top|numTopics = Number of topics to learn
+#ttp|numTermsToPrint = Number of terms to print per topic
+#a|alpha = Smoothing parameter for p(topic | document) prior
+#e|eta = Smoothing parameter for p(term | topic)
+#m|maxIterations = Maximum number of training passes
+#b|burnInIterations =  Minimum number of iterations
+#c|convergence = Fractional rate of error to consider convergence
+#rdt|reInferDocTopics = re-infer p(topic | doc) : [no | randstart | continue]
+
+#dfs|dfs = HDFS namenode URI
+#minDfCt|minDocFreq = Minimum document frequency (integer!) to consider in vocabulary
+#maxDfPct|maxDocFreqPercentage = Maximum percentage of documents a vocabulary term can occur in
+
+# The rest of these parameters are optional TODO: make optional!
