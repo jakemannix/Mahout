@@ -231,9 +231,25 @@ public class CVB0Driver extends AbstractJob {
                      + input + " to " + output;
     log.info("About to run: " + jobName);
     Configuration conf = new Configuration(getConf());
+    Job job = new Job(conf, jobName);
+    job.setMapperClass(TermDedupingMapper.class);
+    job.setCombinerClass(TopicTermOutputReducer.class);
+    job.setReducerClass(TopicTermOutputReducer.class);
+    job.setInputFormatClass(SequenceFileInputFormat.class);
+    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+    job.setOutputKeyClass(CVBKey.class);
+    job.setOutputValueClass(CVBTuple.class);
+    FileInputFormat.addInputPath(job, input);
+    Path intermediatePath = new Path(input.getParent(), "topicModelTemp");
+    FileOutputFormat.setOutputPath(job, intermediatePath);
+    job.setJarByClass(CVB0Driver.class);
+    if(!job.waitForCompletion(true)) {
+      throw new InterruptedException("Could not complete: " + jobName);
+    }
+    conf = new Configuration(getConf());
     conf.set(PartialVectorMerger.DIMENSION, String.valueOf(numTerms));
     conf.set(CVB0Mapper.NUM_TERMS, String.valueOf(numTerms));
-    Job job = new Job(conf, jobName);
+    job = new Job(conf, jobName);
     job.setMapperClass(TopicVectorOutputMapper.class);
     job.setCombinerClass(PartialVectorMergeReducer.class);
     job.setReducerClass(PartialVectorMergeReducer.class);
@@ -241,7 +257,7 @@ public class CVB0Driver extends AbstractJob {
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
-    FileInputFormat.addInputPath(job, input);
+    FileInputFormat.addInputPath(job, intermediatePath);
     FileOutputFormat.setOutputPath(job, output);
     job.setJarByClass(CVB0Driver.class);
     job.submit();
@@ -352,49 +368,8 @@ public class CVB0Driver extends AbstractJob {
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException("Failed to complete aggregation (phase 2) of LDA " + iterationNumber);
     }
-    //walkResults(conf, stage1InputPath(stage1output.getParent(), iterationNumber));
   }
-/*
-  private void walkResults(Configuration conf, Path path) throws IOException {
-    FileSystem fs = FileSystem.get(conf);
 
-    Path partFile = null;
-    for(FileStatus status : fs.listStatus(path, PathFilters.partFilter())) {
-      partFile = status.getPath();
-      break;
-    }
-    SequenceFile.Reader reader = new SequenceFile.Reader(fs, partFile, conf);
-    CVBKey key = new CVBKey();
-    CVBTuple tuple = new CVBTuple();
-    while(reader.next(key, tuple)) {
-      if(key.getDocId() != tuple.getDocumentId() || key.getTermId() != tuple.getTermId()) {
-       log.warn("BAD Pairing: \n" + key + "=>" + tuple);
-      }
-      Pair<Integer, Integer> p = Pair.of(key.getDocId(), key.getTermId());
-      if(!CVBSortingComparator.SORTED.containsKey(p)) {
-        CVBSortingComparator.SORTED.put(p, EnumSet.noneOf(AggregationBranch.class));
-      }
-      for(AggregationBranch branch : AggregationBranch.values()) {
-        if(tuple.hasData(branch)) {
-          if(CVBSortingComparator.SORTED.get(p).contains(branch)) {
-            log.warn(p + " has two instances of: " + branch +
-              "\n" + key + " => " + tuple);
-          }
-          CVBSortingComparator.SORTED.get(p).add(branch);
-        }
-      }
-    }
-    for(Pair<Integer,Integer> p : CVBSortingComparator.SORTED.keySet()) {
-      if(!CVBSortingComparator.SORTED.get(p).equals(EnumSet.allOf(AggregationBranch.class))) {
-        log.warn("not enough branches for: " + p + " : " +
-           CVBSortingComparator.SORTED.get(p));
-      } else {
-        log.error("all is good");
-      }
-    }
-    throw new IllegalArgumentException("DONE");
-  }
-*/
   public void runIteration(Configuration conf, Path stage1input, Path stage1output, int iterationNumber)
       throws IOException, ClassNotFoundException, InterruptedException {
     runIterationStage1(conf, stage1input, stage1output, iterationNumber);
@@ -402,6 +377,8 @@ public class CVB0Driver extends AbstractJob {
   }
 
   private static class TopicOutputReducer extends UniquingReducer<IntPairWritable, DoubleWritable> {}
+
+  private static class TopicTermOutputReducer extends UniquingReducer<CVBKey, CVBTuple> {}
 
   private static class DocTopicOutputReducer extends UniquingReducer<IntWritable, VectorWritable> {}
 
