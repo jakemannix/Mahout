@@ -34,6 +34,8 @@ import org.apache.mahout.math.VectorWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+
 public class RowIdJob extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(RowIdJob.class);
 
@@ -43,6 +45,8 @@ public class RowIdJob extends AbstractJob {
     addInputOption();
     addOutputOption();
     parseArguments(strings);
+
+    Map<String, String> args = parseArguments(strings);
 
     Configuration conf = getConf();
     FileSystem fs = FileSystem.get(conf);

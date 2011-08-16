@@ -3,10 +3,12 @@ package org.apache.mahout.clustering.lda.cvb;
 import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -20,6 +22,7 @@ import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.IntPairWritable;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
+import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.vectorizer.common.PartialVectorMergeReducer;
 import org.apache.mahout.vectorizer.common.PartialVectorMerger;
@@ -145,7 +148,9 @@ public class CVB0Driver extends AbstractJob {
       Path stage1output = stage1OutputPath(topicModelStateTempPath, iterationNumber - 1);
       runIteration(conf, stage1input, stage1output, iterationNumber);
       if(iterationNumber % iterationBlockSize == 0) {
-        log.warn("We would normally be spitting out perplexity here");
+        previousPerplexity = perplexity;
+        perplexity = calculatePerplexity(conf, stage1output);
+        log.info("current perplexity = " + perplexity);
       }
     }
     log.info("Completed {} iterations in {} seconds",
@@ -163,6 +168,43 @@ public class CVB0Driver extends AbstractJob {
     }
     return 0;
   }
+
+  private double calculatePerplexity(Configuration conf, Path stage1output) throws IOException,
+      ClassNotFoundException, InterruptedException {
+    String jobName = "Calculating perplexity for " + stage1output;
+    log.info("About to run: " + jobName);
+    Job job = new Job(conf, jobName);
+    job.setMapperClass(PerplexityCheckingMapper.class);
+    job.setReducerClass(PerplexityCheckingReducer.class);
+    job.setInputFormatClass(SequenceFileInputFormat.class);
+    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+    job.setOutputKeyClass(NullWritable.class);
+    job.setOutputValueClass(DoubleWritable.class);
+    FileInputFormat.addInputPath(job, stage1output);
+    Path outputPath = new Path(stage1output.getParent(), "perplexity");
+    FileOutputFormat.setOutputPath(job, outputPath);
+    HadoopUtil.delete(conf, outputPath);
+    job.setJarByClass(PerplexityCheckingMapper.class);
+    if(!job.waitForCompletion(true)) {
+      throw new InterruptedException("Failed to calculate perplexity for: " + stage1output);
+    }
+    double perplexity = 0;
+    FileSystem fs = FileSystem.get(conf);
+    FileStatus[] statuses = fs.listStatus(outputPath, PathFilters.partFilter());
+    for(FileStatus status : statuses) {
+      log.info("reading perplexity from: " + status.getPath());
+      int i = 0;
+      SequenceFile.Reader reader = new SequenceFile.Reader(fs, status.getPath(), conf);
+      DoubleWritable d = new DoubleWritable();
+      while(reader.next(NullWritable.get(), d)) {
+        perplexity += d.get();
+        i++;
+      }
+      log.info("read " + i + " perplexity values");
+    }
+    return perplexity;
+  }
+
 
   private Job writeTopicModel(Path input, Path output)
       throws IOException, ClassNotFoundException, InterruptedException {
@@ -189,9 +231,25 @@ public class CVB0Driver extends AbstractJob {
                      + input + " to " + output;
     log.info("About to run: " + jobName);
     Configuration conf = new Configuration(getConf());
+    Job job = new Job(conf, jobName);
+    job.setMapperClass(TermDedupingMapper.class);
+    job.setCombinerClass(TopicTermOutputReducer.class);
+    job.setReducerClass(TopicTermOutputReducer.class);
+    job.setInputFormatClass(SequenceFileInputFormat.class);
+    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+    job.setOutputKeyClass(CVBKey.class);
+    job.setOutputValueClass(CVBTuple.class);
+    FileInputFormat.addInputPath(job, input);
+    Path intermediatePath = new Path(input.getParent(), "topicModelTemp");
+    FileOutputFormat.setOutputPath(job, intermediatePath);
+    job.setJarByClass(CVB0Driver.class);
+    if(!job.waitForCompletion(true)) {
+      throw new InterruptedException("Could not complete: " + jobName);
+    }
+    conf = new Configuration(getConf());
     conf.set(PartialVectorMerger.DIMENSION, String.valueOf(numTerms));
     conf.set(CVB0Mapper.NUM_TERMS, String.valueOf(numTerms));
-    Job job = new Job(conf, jobName);
+    job = new Job(conf, jobName);
     job.setMapperClass(TopicVectorOutputMapper.class);
     job.setCombinerClass(PartialVectorMergeReducer.class);
     job.setReducerClass(PartialVectorMergeReducer.class);
@@ -199,7 +257,7 @@ public class CVB0Driver extends AbstractJob {
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
-    FileInputFormat.addInputPath(job, input);
+    FileInputFormat.addInputPath(job, intermediatePath);
     FileOutputFormat.setOutputPath(job, output);
     job.setJarByClass(CVB0Driver.class);
     job.submit();
@@ -310,49 +368,8 @@ public class CVB0Driver extends AbstractJob {
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException("Failed to complete aggregation (phase 2) of LDA " + iterationNumber);
     }
-    //walkResults(conf, stage1InputPath(stage1output.getParent(), iterationNumber));
   }
-/*
-  private void walkResults(Configuration conf, Path path) throws IOException {
-    FileSystem fs = FileSystem.get(conf);
 
-    Path partFile = null;
-    for(FileStatus status : fs.listStatus(path, PathFilters.partFilter())) {
-      partFile = status.getPath();
-      break;
-    }
-    SequenceFile.Reader reader = new SequenceFile.Reader(fs, partFile, conf);
-    CVBKey key = new CVBKey();
-    CVBTuple tuple = new CVBTuple();
-    while(reader.next(key, tuple)) {
-      if(key.getDocId() != tuple.getDocumentId() || key.getTermId() != tuple.getTermId()) {
-       log.warn("BAD Pairing: \n" + key + "=>" + tuple);
-      }
-      Pair<Integer, Integer> p = Pair.of(key.getDocId(), key.getTermId());
-      if(!CVBSortingComparator.SORTED.containsKey(p)) {
-        CVBSortingComparator.SORTED.put(p, EnumSet.noneOf(AggregationBranch.class));
-      }
-      for(AggregationBranch branch : AggregationBranch.values()) {
-        if(tuple.hasData(branch)) {
-          if(CVBSortingComparator.SORTED.get(p).contains(branch)) {
-            log.warn(p + " has two instances of: " + branch +
-              "\n" + key + " => " + tuple);
-          }
-          CVBSortingComparator.SORTED.get(p).add(branch);
-        }
-      }
-    }
-    for(Pair<Integer,Integer> p : CVBSortingComparator.SORTED.keySet()) {
-      if(!CVBSortingComparator.SORTED.get(p).equals(EnumSet.allOf(AggregationBranch.class))) {
-        log.warn("not enough branches for: " + p + " : " +
-           CVBSortingComparator.SORTED.get(p));
-      } else {
-        log.error("all is good");
-      }
-    }
-    throw new IllegalArgumentException("DONE");
-  }
-*/
   public void runIteration(Configuration conf, Path stage1input, Path stage1output, int iterationNumber)
       throws IOException, ClassNotFoundException, InterruptedException {
     runIterationStage1(conf, stage1input, stage1output, iterationNumber);
@@ -360,6 +377,8 @@ public class CVB0Driver extends AbstractJob {
   }
 
   private static class TopicOutputReducer extends UniquingReducer<IntPairWritable, DoubleWritable> {}
+
+  private static class TopicTermOutputReducer extends UniquingReducer<CVBKey, CVBTuple> {}
 
   private static class DocTopicOutputReducer extends UniquingReducer<IntWritable, VectorWritable> {}
 
