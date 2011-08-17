@@ -147,7 +147,7 @@ public class CVB0Driver extends AbstractJob {
       Path stage1input = stage1InputPath(topicModelStateTempPath, iterationNumber - 1);
       Path stage1output = stage1OutputPath(topicModelStateTempPath, iterationNumber - 1);
       runIteration(conf, stage1input, stage1output, iterationNumber);
-      if(iterationNumber % iterationBlockSize == 0) {
+      if(testFraction > 0 && iterationNumber % iterationBlockSize == 0) {
         previousPerplexity = perplexity;
         perplexity = calculatePerplexity(conf, stage1output);
         log.info("current perplexity = " + perplexity);
