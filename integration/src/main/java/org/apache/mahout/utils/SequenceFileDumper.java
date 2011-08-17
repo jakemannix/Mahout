@@ -17,9 +17,15 @@
 
 package org.apache.mahout.utils;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+
 import com.google.common.base.Charsets;
 import com.google.common.io.Closeables;
 import com.google.common.io.Files;
+
 import org.apache.commons.cli2.CommandLine;
 import org.apache.commons.cli2.Group;
 import org.apache.commons.cli2.Option;
@@ -30,16 +36,14 @@ import org.apache.commons.cli2.builder.GroupBuilder;
 import org.apache.commons.cli2.commandline.Parser;
 import org.apache.commons.cli2.util.HelpFormatter;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Writable;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.File;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 
 public final class SequenceFileDumper {
 
@@ -84,8 +88,11 @@ public final class SequenceFileDumper {
       }
 
       if (cmdLine.hasOption(seqOpt)) {
-        Path path = new Path(cmdLine.getValue(seqOpt).toString());
         Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(conf);
+        Path pathPattern = new Path(cmdLine.getValue(seqOpt).toString());
+        log.info("Processing path '" + pathPattern + "'");
+        FileStatus[] inputPaths = fs.globStatus(pathPattern);
 
         Writer writer;
         if (cmdLine.hasOption(outputOpt)) {
@@ -93,40 +100,31 @@ public final class SequenceFileDumper {
         } else {
           writer = new OutputStreamWriter(System.out);
         }
-        try {
-          writer.append("Input Path: ").append(String.valueOf(path)).append('\n');
 
-          int sub = Integer.MAX_VALUE;
-          if (cmdLine.hasOption(substringOpt)) {
-            sub = Integer.parseInt(cmdLine.getValue(substringOpt).toString());
+        int sub = Integer.MAX_VALUE;
+        if (cmdLine.hasOption(substringOpt)) {
+          sub = Integer.parseInt(cmdLine.getValue(substringOpt).toString());
+        }
+
+        boolean countOnly = cmdLine.hasOption(countOpt);
+
+        long numItems = Long.MAX_VALUE;
+        if (cmdLine.hasOption(numItemsOpt)) {
+          numItems = Long.parseLong(cmdLine.getValue(numItemsOpt).toString());
+          writer.append("Max Items to dump: ").append(String.valueOf(numItems));
+        }
+
+        try {
+          long totalCount = 0;
+          for (FileStatus s : inputPaths) {
+            long count = dump(conf, s.getPath(), countOnly, numItems, sub, writer);
+            if (numItems != Integer.MAX_VALUE) numItems -= count;
+            totalCount += count;
+            writer.flush();
+            if (numItems <= 0) break;
           }
-          boolean countOnly = cmdLine.hasOption(countOpt);
-          SequenceFileIterator<?, ?> iterator = new SequenceFileIterator<Writable, Writable>(path, true, conf);
-          writer.append("Key class: ").append(iterator.getKeyClass().toString());
-          writer.append(" Value Class: ").append(iterator.getValueClass().toString()).append('\n');
-          long count = 0;
-          if (countOnly) {
-            while (iterator.hasNext()) {
-              iterator.next();
-              count++;
-            }
-            writer.append("Count: ").append(String.valueOf(count)).append('\n');
-          } else {
-            long numItems = Long.MAX_VALUE;
-            if (cmdLine.hasOption(numItemsOpt)) {
-              numItems = Long.parseLong(cmdLine.getValue(numItemsOpt).toString());
-              writer.append("Max Items to dump: ").append(String.valueOf(numItems));
-            }
-            while (iterator.hasNext() && count < numItems) {
-              Pair<?, ?> record = iterator.next();
-              writer.append("Key: ").append(record.getFirst().toString());
-              String str = record.getSecond().toString();
-              writer.append(": Value: ").append(str.length() > sub ? str.substring(0, sub) : str);
-              writer.write('\n');
-              count++;
-            }
-            writer.append("Count: ").append(String.valueOf(count)).append('\n');
-          }
+          if (inputPaths.length > 1)
+          writer.append("Total count: ").append(String.valueOf(totalCount)).append('\n');
         } finally {
           Closeables.closeQuietly(writer);
         }
@@ -137,6 +135,32 @@ public final class SequenceFileDumper {
       printHelp(group);
     }
 
+  }
+
+  public static long dump(Configuration conf, Path path, boolean countOnly, long numItems, int substring, Writer writer) throws IOException {
+    writer.append("Input Path: ").append(String.valueOf(path)).append('\n');
+    SequenceFileIterator<?, ?> iterator = new SequenceFileIterator<Writable, Writable>(path, true, conf);
+    writer.append("Key class: ").append(iterator.getKeyClass().toString());
+    writer.append(" Value Class: ").append(iterator.getValueClass().toString()).append('\n');
+    long count = 0;
+    if (countOnly) {
+      while (iterator.hasNext()) {
+        iterator.next();
+        count++;
+      }
+      writer.append("Count: ").append(String.valueOf(count)).append('\n');
+    } else {
+      while (iterator.hasNext() && count < numItems) {
+        Pair<?, ?> record = iterator.next();
+        writer.append("Key: ").append(record.getFirst().toString());
+        String str = record.getSecond().toString();
+        writer.append(": Value: ").append(str.length() > substring ? str.substring(0, substring) : str);
+        writer.write('\n');
+        count++;
+      }
+      writer.append("Count: ").append(String.valueOf(count)).append('\n');
+    }
+    return count;
   }
 
   private static void printHelp(Group group) {
