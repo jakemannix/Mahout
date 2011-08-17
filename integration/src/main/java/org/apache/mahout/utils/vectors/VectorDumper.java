@@ -104,16 +104,16 @@ public final class VectorDumper {
             .withShortName("sort").create();
     Option sizeOpt = obuilder.withLongName("sizeOnly").withRequired(false).
         withDescription("Dump only the size of the vector").withShortName("sz").create();
-    Option numItemsOpt = obuilder.withLongName("n").withRequired(false).withArgument(
+    Option numItemsOpt = obuilder.withLongName("numItems").withShortName("n").withRequired(false).withArgument(
         abuilder.withName("numItems").withMinimum(1).withMaximum(1).create()).
-        withDescription("Output at most <n> key value pairs").withShortName("n").create();
+        withDescription("Output at most <numItems> key-value pairs").create();
     Option helpOpt =
         obuilder.withLongName("help").withDescription("Print out help").withShortName("h")
             .create();
 
     Group group = gbuilder.withName("Options").withOption(seqOpt).withOption(outputOpt).withOption(
         dictTypeOpt).withOption(dictOpt).withOption(csvOpt).withOption(vectorAsKeyOpt).withOption(
-        printKeyOpt).withOption(sortVectorsOpt).withOption(helpOpt).withOption(sizeOpt).create();
+        printKeyOpt).withOption(sortVectorsOpt).withOption(helpOpt).withOption(numItemsOpt).withOption(sizeOpt).create();
 
     try {
       Parser parser = new Parser();
