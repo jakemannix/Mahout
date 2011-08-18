@@ -1,6 +1,7 @@
 package org.apache.mahout.clustering.lda.cvb;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -49,7 +50,10 @@ public class CVB0Driver extends AbstractJob {
   @Override public int run(String[] args) throws Exception {
     addInputOption();
     addOutputOption();
-    addOption(DefaultOptionCreator.maxIterationsOption().create());
+    addOption(DefaultOptionCreator.maxIterationsOption().withDescription("The maximum number of iterations." +
+    		" If this value is less than or equal to the number of iteration states found within the directory specified by option '" +
+    		MODEL_TEMP_DIR + "', no further iterations are performed. Instead, output topic/term and doc/topic" +
+    				" distributions are generated using data from the specified iteration.").create());
     addOption(DefaultOptionCreator.convergenceOption().create());
     addOption(DefaultOptionCreator.overwriteOption().create());
 
@@ -133,6 +137,8 @@ public class CVB0Driver extends AbstractJob {
     if(iterationNumber < 0) {
       runStage0(conf, inputPath, topicModelStateTempPath);
       iterationNumber = 0;
+    } else if (iterationNumber > maxIterations) {
+      iterationNumber = maxIterations;
     }
     conf.set(CVB0Mapper.NUM_TOPICS, String.valueOf(numTopics));
     conf.set(CVB0Mapper.NUM_TERMS, String.valueOf(numTerms));
@@ -160,11 +166,23 @@ public class CVB0Driver extends AbstractJob {
     Job docInferenceJob = docTopicOutputPath != null
         ? writeDocTopicInference(finalIterationData, docTopicOutputPath)
         : null;
-    if(!topicWritingJob.waitForCompletion(true)) {
-      return -1;
-    }
-    if(docInferenceJob != null && !docInferenceJob.waitForCompletion(true)) {
-      return -1;
+    try {
+      if(!topicWritingJob.waitForCompletion(true)) {
+        return -1;
+      }
+      if(docInferenceJob != null && !docInferenceJob.waitForCompletion(true)) {
+        return -1;
+      }
+    } finally {
+      // get rid of temp paths
+      Path[] tmpPaths = FileInputFormat.getInputPaths(topicWritingJob);
+      if (tmpPaths != null && tmpPaths.length > 0) {
+        try {
+          HadoopUtil.delete(conf, tmpPaths);
+        } catch (Exception e) {
+          log.error("Failed to delete temp paths '" + Arrays.toString(tmpPaths) + "'");
+        }
+      }
     }
     return 0;
   }
@@ -240,7 +258,7 @@ public class CVB0Driver extends AbstractJob {
     job.setOutputKeyClass(CVBKey.class);
     job.setOutputValueClass(CVBTuple.class);
     FileInputFormat.addInputPath(job, input);
-    Path intermediatePath = new Path(input.getParent(), "topicModelTemp");
+    Path intermediatePath = new Path(input.getParent(), "topicModelTemp-" + System.nanoTime());
     FileOutputFormat.setOutputPath(job, intermediatePath);
     job.setJarByClass(CVB0Driver.class);
     if(!job.waitForCompletion(true)) {
