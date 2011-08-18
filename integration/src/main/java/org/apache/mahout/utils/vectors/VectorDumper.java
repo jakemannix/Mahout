@@ -97,7 +97,7 @@ public final class VectorDumper {
             .withRequired(false)
             .withDescription(
                 "If using CSV output, optionally add a comment line for each NamedVector (if the vector is one) printing out the name")
-            .withShortName("n").create();
+            .create();
     Option sortVectorsOpt =
         obuilder.withLongName("sortVectors").withRequired(false).withDescription(
             "Sort output key/value pairs of the vector entries in abs magnitude descending order")
@@ -185,8 +185,10 @@ public final class VectorDumper {
           for (FileStatus s : inputPaths) {
             Path path = s.getPath();
             log.info("Processing '" + path + "' (" + (++fileIndex) + "/" + inputPaths.length + ")");
-            dump(conf, s.getPath(), writer, dictionary, sortVectors, numItems, printKey,
+            long count = dump(conf, s.getPath(), writer, dictionary, sortVectors, numItems, printKey,
                 transposeKeyValue, sizeOnly, useCSV, namesAsComments);
+            numItems -= count;
+            if (numItems <= 0) break;
           }
 
         } finally {
@@ -200,7 +202,7 @@ public final class VectorDumper {
     }
   }
 
-  private static void dump(Configuration conf, Path path, Writer writer,
+  private static long dump(Configuration conf, Path path, Writer writer,
       String[] dictionary, boolean sortVectors, long numItems, boolean printKey,
       boolean transposeKeyValue, boolean sizeOnly, boolean useCSV, boolean namesAsComments)
       throws IOException {
@@ -244,6 +246,7 @@ public final class VectorDumper {
       }
       count++;
     }
+    return count;
   }
 
   private static void printHelp(Group group) {
