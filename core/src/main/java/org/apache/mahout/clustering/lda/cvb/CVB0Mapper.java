@@ -1,9 +1,12 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import com.google.common.collect.Maps;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.mahout.common.Pair;
 
 import java.io.IOException;
+import java.util.EnumMap;
 import java.util.Random;
 
 public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
@@ -13,6 +16,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
   public static final String NUM_TERMS = CVB0Mapper.class.getName() + ".numTerms";
   public static final String RANDOM_SEED = CVB0Mapper.class.getName() + ".seed";
   public static final String TEST_SET_PCT = CVB0Mapper.class.getName() + ".testSetFraction";
+  public static final String TOPIC_SUM_PARTITIONING_FACTOR = CVB0Mapper.class.getName() + ".partitionFactor";
 
   private int numTopics;
   private double eta;
@@ -20,9 +24,12 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
   private double etaTimesNumTerms;
   private long seed;
   private float testSetFraction;
+  private int topicSumPartitioningFactor;
 
   private CVBKey outputKey = new CVBKey();
   private CVBTuple outputValue = new CVBTuple();
+  private EnumMap<AggregationBranch, Pair<CVBKey, CVBTuple>> mapsideCombinerCache =
+      Maps.newEnumMap(AggregationBranch.class);
   protected CVBInference inference;
 
   @Override
@@ -39,7 +46,11 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     etaTimesNumTerms = eta * numTerms;
     seed = conf.getLong(RANDOM_SEED, 1234L);
     testSetFraction = conf.getFloat(TEST_SET_PCT, 0f);
+    topicSumPartitioningFactor = conf.getInt(TOPIC_SUM_PARTITIONING_FACTOR, 10);
     inference = new CVBInference(eta, alpha, numTerms);
+    for(AggregationBranch branch : AggregationBranch.values()) {
+      mapsideCombinerCache.put(branch, Pair.of(new CVBKey(), new CVBTuple()));
+    }
   }
 
   private int currentTermId;
