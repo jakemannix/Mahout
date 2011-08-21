@@ -4,7 +4,7 @@ public enum AggregationBranch {
   TOPIC_TERM, DOC_TOPIC, TOPIC_SUM;
 
   public static AggregationBranch of(int termId, int docId) {
-    if(termId < 0 && docId < -1) {
+    if(termId < 0 && docId < 0) {
       return TOPIC_SUM;
     }
     if(termId == -1) {

@@ -78,7 +78,7 @@ public class CVBKey implements WritableComparable<CVBKey> {
   }
 
   private void checkState(DataOutput out) {
-    if(termId == -1 || docId == -1) {
+    if(termId < 0 || docId < 0) {
       if(branch != AggregationBranch.of(termId, docId)
          && (out == null || !(out instanceof StringDataOutput))) {
         throw new IllegalStateException("Should not be writing: " + toString());
