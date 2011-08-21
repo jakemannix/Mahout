@@ -28,6 +28,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
 
   private CVBKey outputKey = new CVBKey();
   private CVBTuple outputValue = new CVBTuple();
+  private double[] topicSum;
   private EnumMap<AggregationBranch, Pair<CVBKey, CVBTuple>> mapsideCombinerCache =
       Maps.newEnumMap(AggregationBranch.class);
   protected CVBInference inference;
@@ -40,6 +41,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
 
   public void configure(Configuration conf) {
     numTopics = conf.getInt(NUM_TOPICS, -1);
+    topicSum = new double[numTopics];
     eta = conf.getFloat(ETA, 0.1f);
     int numTerms = conf.getInt(NUM_TERMS, -1);
     alpha = conf.getFloat(ALPHA, 0.1f);
@@ -87,8 +89,10 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     emitExpectedCountsForAggregating(termId, -1, d, ctx);
     // emit (-1, i, T) : { (-, -, -), -, [t_aix], - }
     emitExpectedCountsForAggregating(-1, docId, d, ctx);
-    // emit (-1,-1, T) : { (-, -, -), -, -, [t_aix] }
-    emitExpectedCountsForAggregating(-1, -1, d, ctx);
+    // aggregate topicSum
+    for(int x = 0; x < numTopics; x++) {
+      topicSum[x] += d[x];
+    }
 
     // prepare the output tuple
     outputValue.setTermId(termId);
@@ -102,8 +106,6 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     emitCountForTagging(termId, -1, ctx);
     // emit (-1, i, F) : { (a, i, c_ai), -, -, - }
     emitCountForTagging(-1, docId, ctx);
-    // emit (-1, -1, F) : { (a, i, c_ai), -, -, - }
-    emitCountForTagging(-1, -1, ctx);
 
     // after reduce step:
     // reducer for (a, -1):
@@ -116,6 +118,21 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     // reducer:
     // (a, i, T) : { (-, -, c_ai), [sum_a(t_aix)], [sum_i(t_aix)],  []}
     // you get 3 and only 3 tuples for this key.
+  }
+
+  @Override
+  protected void cleanup(Context context) throws IOException, InterruptedException {
+    // emit the topicSum values to all reducers
+    outputKey.setBranch(AggregationBranch.TOPIC_SUM);
+    outputKey.setTermId(-1);
+    outputKey.setB(true);
+    outputValue.clearCounts();
+    outputValue.setItemCount(-1);
+    outputValue.setCount(AggregationBranch.TOPIC_SUM, topicSum);
+    for(int partition = 0; partition < topicSumPartitioningFactor; partition++) {
+      outputKey.setDocId(-(1 + partition));
+      context.write(outputKey, outputValue);
+    }
   }
 
   private void initializeCounts(CVBKey key, CVBTuple tuple) {

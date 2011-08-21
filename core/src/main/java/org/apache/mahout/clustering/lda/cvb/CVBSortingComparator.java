@@ -34,17 +34,23 @@ public class CVBSortingComparator extends WritableComparator implements RawCompa
                                           byte[] bytes1, int start1, int len1) {
     int termId = readInt(bytes, start);
     int termId1 = readInt(bytes1, start1);
-    
-    int result = new Integer(termId).compareTo(termId1);
-    // if termIds are different, return reverse 
+
+    int docId = readInt(bytes, start + 4);
+    int docId1 = readInt(bytes1, start1 + 4);
+
+    int result = compare(docId, docId1);
+
+    // if docIds are different, return reverse
     if(result != 0) {
       return -result;
     }
-    int docId = readInt(bytes, start + 4);
-    int docId1 = readInt(bytes1, start1 + 4);
     // termIds are different, return reverse sorting of docId
-    result = - new Integer(docId).compareTo(docId1);
+    result = - compare(termId, termId1);
     return result;
+  }
+
+  public static int compare(int x, int y) {
+    return (x < y) ? -1 : ((x == y) ? 0 : 1);
   }
 
   @Override public int compare(Object x, Object y) {

@@ -18,6 +18,8 @@ import java.io.IOException;
 */
 public class CVB0Reducer extends Reducer<CVBKey, CVBTuple, CVBKey, CVBTuple> {
 
+  private double[] topicSums = null;
+
   public void reduce(CVBKey key, Iterable<CVBTuple> values, Context ctx)
       throws IOException, InterruptedException {
     int termId = key.getTermId(); // a
@@ -38,12 +40,24 @@ public class CVB0Reducer extends Reducer<CVBKey, CVBTuple, CVBKey, CVBTuple> {
         if(aggregateTuple.hasData(branch)) {
           tuple.clearCounts();
           tuple.setCount(branch, aggregateTuple.getCount(branch));
+          if(branch == AggregationBranch.TOPIC_TERM) {
+            // we should also have topicSums here
+            if(topicSums == null) {
+              throw new IllegalArgumentException("We should have gotten topicSums already!");
+            }
+            // tag with topicSums
+            // TODO: take the ratios right here! topicTerm + eta / topicSum + W*eta
+            tuple.setCount(AggregationBranch.TOPIC_SUM, topicSums);
+          }
         } else {
           throw new IllegalStateException("we're taggin' and baggin, but nothing to tag with!");
         }
         // we're tagging corpus entries, so we write here.
         write(key, tuple, ctx, branch);
       }
+    }
+    if(branch == AggregationBranch.TOPIC_SUM) {
+      topicSums = aggregateTuple.getCount(branch);
     }
   }
 
