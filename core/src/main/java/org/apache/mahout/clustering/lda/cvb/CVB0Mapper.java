@@ -6,6 +6,7 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.mahout.common.Pair;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.Random;
 
@@ -17,6 +18,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
   public static final String RANDOM_SEED = CVB0Mapper.class.getName() + ".seed";
   public static final String TEST_SET_PCT = CVB0Mapper.class.getName() + ".testSetFraction";
   public static final String TOPIC_SUM_PARTITIONING_FACTOR = CVB0Mapper.class.getName() + ".partitionFactor";
+  public static final String ITERATION_NUM = CVB0Mapper.class.getName() + ".iteration";
 
   private int numTopics;
   private double eta;
@@ -25,6 +27,8 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
   private long seed;
   private float testSetFraction;
   private int topicSumPartitioningFactor;
+  private int iterationNumber;
+  private Random random;
 
   private CVBKey outputKey = new CVBKey();
   private CVBTuple outputValue = new CVBTuple();
@@ -47,6 +51,8 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     alpha = conf.getFloat(ALPHA, 0.1f);
     etaTimesNumTerms = eta * numTerms;
     seed = conf.getLong(RANDOM_SEED, 1234L);
+    iterationNumber = conf.getInt(ITERATION_NUM, -1);
+    random = new Random(seed * (iterationNumber + 2));
     testSetFraction = conf.getFloat(TEST_SET_PCT, 0f);
     topicSumPartitioningFactor = conf.getInt(TOPIC_SUM_PARTITIONING_FACTOR, 10);
     inference = new CVBInference(eta, alpha, numTerms);
@@ -73,11 +79,9 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
       initializeCounts(key, value);
     }
     double[] d = inference.pTopicGivenTermInDoc(value);
-    // Now multiply by the item count to get the "expected-counts" of
-    // C_ai * p(x|a,i) = t_aix = "number of times item a in document i was assigned to topic x"
-    for(int x = 0; x < numTopics; x++) {
-      d[x] *= value.getItemCount();
-    }
+    int topic = sampleTopic(d);
+    double count = value.getItemCount();
+
     int termId = key.getTermId();
     int docId = key.getDocId();
     double itemCount = value.getItemCount();
@@ -86,13 +90,11 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     currentCount = itemCount;
 
     // emit (a, -1, T) : { (-, -, -), [t_aix], -, - }
-    emitExpectedCountsForAggregating(termId, -1, d, ctx);
+    emitExpectedCountsForAggregating(termId, -1, count, topic, ctx);
     // emit (-1, i, T) : { (-, -, -), -, [t_aix], - }
-    emitExpectedCountsForAggregating(-1, docId, d, ctx);
+    emitExpectedCountsForAggregating(-1, docId, count, topic, ctx);
     // aggregate topicSum
-    for(int x = 0; x < numTopics; x++) {
-      topicSum[x] += d[x];
-    }
+    topicSum[topic] += count;
 
     // prepare the output tuple
     outputValue.setTermId(termId);
@@ -118,6 +120,22 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     // reducer:
     // (a, i, T) : { (-, -, c_ai), [sum_a(t_aix)], [sum_i(t_aix)],  []}
     // you get 3 and only 3 tuples for this key.
+  }
+
+  /**
+   *
+   * @param distribution example: [0.1, 0.4, 0.2, 0.3]
+   * @return example: [0.1, 0.5, 0.7, 1.0]
+   */
+  private int sampleTopic(double[] distribution) {
+    double[] partitions = new double[distribution.length];
+    partitions[0] = distribution[0];
+    for(int x=1; x<partitions.length; x++) {
+      partitions[x] = partitions[x-1] + distribution[x];
+    }
+    double rand = random.nextDouble();
+    int i = Arrays.binarySearch(partitions, rand);
+    return i < 0 ? -(i+1) : i;
   }
 
   @Override
@@ -164,10 +182,12 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     outputKey.setB(forAggregating);
     outputKey.setBranch(AggregationBranch.of(termId, docId));
 
-    outputValue.setItemCount(currentCount);
-    outputValue.setDocumentId(currentDocId);
-    outputValue.setTermId(currentTermId);
     outputValue.clearCounts();
+    if(forAggregating) {
+      outputValue.setItemCount(currentCount);
+      outputValue.setDocumentId(currentDocId);
+      outputValue.setTermId(currentTermId);
+    }
   }
 
   private void emitCountForTagging(int termId, int docId, Context ctx)
@@ -177,8 +197,8 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     write(ctx, outputKey, outputValue, false);
   }
 
-  private void emitExpectedCountsForAggregating(int termId, int docId, double[] expectedCounts,
-      Context ctx)
+  private void emitExpectedCountsForAggregating(int termId, int docId, double sampleCount,
+      int topic, Context ctx)
       throws IOException, InterruptedException {
     // for documents in the test set, we don't want to emit expected counts to the overall
     // topic model, but for efficiency's sake, we *will* train the doc/topic probabilities for
@@ -191,13 +211,14 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     // emit: (a, -1, T) | (-1, i, T) | (-1, -1, T) : { (-, -, -), ... [t_aix] ... }
     // termId and/or docId will be -1
     prepareOutput(termId, docId, true);
-    outputValue.setCount(AggregationBranch.of(termId, docId), expectedCounts);
+    outputValue.setTopic(topic);
+    outputValue.setCount(sampleCount);
     write(ctx, outputKey, outputValue, true);
   }
 
   private void write(Context context, CVBKey key, CVBTuple tuple, boolean forAggregation)
       throws IOException, InterruptedException {
-    if((forAggregation && tuple.hasData(AggregationBranch.of(key.getTermId(), key.getDocId())))
+    if((forAggregation && tuple.getCount() >= 0 && tuple.getTopic() >= 0)
        || (!forAggregation && !tuple.hasAnyData())) {
       context.write(key, tuple);
     } else {

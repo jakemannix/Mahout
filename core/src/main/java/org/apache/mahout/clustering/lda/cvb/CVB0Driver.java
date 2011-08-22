@@ -175,7 +175,7 @@ public class CVB0Driver extends AbstractJob {
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(PerplexityCheckingMapper.class);
-    job.setReducerClass(PerplexityCheckingReducer.class);
+    //job.setReducerClass(PerplexityCheckingReducer.class);
     job.setInputFormatClass(SequenceFileInputFormat.class);
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     job.setOutputKeyClass(NullWritable.class);
@@ -325,6 +325,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runIterationStage1(Configuration conf, Path stage1input, Path stage1output,
       int iterationNumber) throws IOException, ClassNotFoundException, InterruptedException {
+    conf.setInt(CVB0Mapper.ITERATION_NUM, iterationNumber);
     String jobName = "Stage1, iteration " + iterationNumber + ", input path: " + stage1input;
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);

@@ -20,7 +20,6 @@ public class DistributedRowMatrixInputMapper
     while(it.hasNext()) {
       Vector.Element e = it.next();
       outputKey.setTermId(e.index());
-      outputKey.setBranch(AggregationBranch.TOPIC_SUM);
       outputValue.setItemCount(e.get());
       ctx.write(outputKey, outputValue);
     }

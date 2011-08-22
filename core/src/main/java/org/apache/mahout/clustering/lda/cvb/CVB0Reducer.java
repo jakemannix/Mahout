@@ -20,16 +20,22 @@ public class CVB0Reducer extends Reducer<CVBKey, CVBTuple, CVBKey, CVBTuple> {
 
   private double[] topicSums = null;
 
+  @Override
+  protected void setup(Context context) {
+    topicSums = new double[context.getConfiguration().getInt(CVB0Mapper.NUM_TOPICS, -1)];
+  }
+
   public void reduce(CVBKey key, Iterable<CVBTuple> values, Context ctx)
       throws IOException, InterruptedException {
     int termId = key.getTermId(); // a
     int docId = key.getDocId(); // i
     AggregationBranch branch = AggregationBranch.of(termId, docId);
     CVBTuple aggregateTuple = new CVBTuple();
+    aggregateTuple.setCount(branch, new double[topicSums.length]);
     for(CVBTuple tuple : values) {
-      if(tuple.getCount(branch) != null) {
+      if(tuple.getTopic() >= 0 && tuple.getCount() >= 0) {
         // still aggregating counts
-        aggregateTuple.accumulate(branch, tuple);
+        aggregateTuple.sparseAccumulate(branch, tuple);
       } else {
         // done aggregating, tag corpus entry and re-emit
         key.setDocId(tuple.getDocumentId());

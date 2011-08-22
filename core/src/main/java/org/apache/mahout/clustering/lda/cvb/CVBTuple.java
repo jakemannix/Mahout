@@ -24,6 +24,9 @@ public class CVBTuple implements Writable {
   private EnumMap<AggregationBranch, double[]> counts
       = new EnumMap<AggregationBranch, double[]>(AggregationBranch.class);
 
+  private int topic = -1;
+  private double count = -1;
+
   public CVBTuple() {
     initialize();
   }
@@ -37,12 +40,16 @@ public class CVBTuple implements Writable {
         counts.put(branch, other.getCount(branch).clone());
       }
     }
+    topic = other.topic;
+    count = other.count;
   }
 
   private void initialize() {
     termId = -1;
     documentId = -1;
     itemCount = -1;
+    topic = -1;
+    count = -1;
     counts.clear();
   }
 
@@ -58,6 +65,10 @@ public class CVBTuple implements Writable {
     }
   }
 
+  public void sparseAccumulate(AggregationBranch branch, CVBTuple other) {
+    counts.get(branch)[other.topic] += other.count;
+  }
+
   @Override public void write(DataOutput out) throws IOException {
     out.writeByte(existenceByte());
     if(itemCount > 0) {
@@ -67,6 +78,10 @@ public class CVBTuple implements Writable {
     }
     for(AggregationBranch branch : AggregationBranch.values()) {
       writeArray(out, counts.get(branch));
+    }
+    if(topic >= 0 && count >= 0) {
+      out.writeInt(topic);
+      out.writeDouble(count);
     }
   }
 
@@ -147,6 +162,10 @@ public class CVBTuple implements Writable {
         counts.put(branch, a);
       }
     }
+    if((existenceByte & 0x16) != 0) {
+      topic = in.readInt();
+      count = in.readDouble();
+    }
   }
 
   public boolean hasAnyData() {
@@ -178,6 +197,9 @@ public class CVBTuple implements Writable {
         b = (byte)(b | branchMasks.get(branch));
       }
     }
+    if(topic >= 0 && count >= 0) {
+      b = (byte)(b | 0x16);
+    }
     return b;
   }
 
@@ -187,6 +209,22 @@ public class CVBTuple implements Writable {
 
   public void setItemCount(double itemCount) {
     this.itemCount = itemCount;
+  }
+
+  public int getTopic() {
+    return topic;
+  }
+
+  public double getCount() {
+    return count;
+  }
+
+  public void setTopic(int topic) {
+    this.topic = topic;
+  }
+
+  public void setCount(double count) {
+    this.count = count;
   }
 
   public void clearCounts() {
