@@ -21,7 +21,7 @@ public class CVBSortingComparator extends WritableComparator implements RawCompa
       return result;
     } else {
       // same docId and termId, return reverse sorting  of the boolean as a byte (1 == true, 0 == false)
-      return - new Byte(bytes[start + 8]).compareTo(bytes1[start1 + 8]);
+      return bytes1[start1 + 8] - bytes[start + 8];
     }
   }
 
@@ -42,10 +42,10 @@ public class CVBSortingComparator extends WritableComparator implements RawCompa
 
     // if docIds are different, return reverse
     if(result != 0) {
-      return -result;
+      return result;
     }
     // termIds are different, return reverse sorting of docId
-    result = - compare(termId, termId1);
+    result = compare(termId, termId1);
     return result;
   }
 

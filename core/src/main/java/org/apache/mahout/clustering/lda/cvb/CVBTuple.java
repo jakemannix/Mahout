@@ -18,9 +18,9 @@ public class CVBTuple implements Writable {
   private int documentId = -1;
   private double itemCount = -1;
   private static EnumMap<AggregationBranch, Byte> branchMasks
-      = Maps.newEnumMap(ImmutableMap.of(AggregationBranch.TOPIC_TERM, (byte)0x2,
-                                        AggregationBranch.DOC_TOPIC, (byte)0x4,
-                                        AggregationBranch.TOPIC_SUM, (byte)0x8));
+      = Maps.newEnumMap(ImmutableMap.of(AggregationBranch.TOPIC_TERM, (byte)2,
+                                        AggregationBranch.DOC_TOPIC, (byte)4,
+                                        AggregationBranch.TOPIC_SUM, (byte)8));
   private EnumMap<AggregationBranch, double[]> counts
       = new EnumMap<AggregationBranch, double[]>(AggregationBranch.class);
 
@@ -69,22 +69,6 @@ public class CVBTuple implements Writable {
     counts.get(branch)[other.topic] += other.count;
   }
 
-  @Override public void write(DataOutput out) throws IOException {
-    out.writeByte(existenceByte());
-    if(itemCount > 0) {
-      out.writeInt(termId);
-      out.writeInt(documentId);
-      out.writeDouble(itemCount);
-    }
-    for(AggregationBranch branch : AggregationBranch.values()) {
-      writeArray(out, counts.get(branch));
-    }
-    if(topic >= 0 && count >= 0) {
-      out.writeInt(topic);
-      out.writeDouble(count);
-    }
-  }
-
   private void writeArray(DataOutput out, double[] a) throws IOException {
     if(a != null) {
       out.writeInt(a.length);
@@ -96,6 +80,10 @@ public class CVBTuple implements Writable {
 
   private double[] readArray(DataInput in) throws IOException {
     int length = in.readInt();
+    if(length < 0) {
+      throw new IllegalStateException(termId + " : " + documentId + " = " + itemCount
+                                      + " (" + length + ")");
+    }
     double[] a = new double[length];
     for(int i = 0; i < length; i++) {
       a[i] = in.readDouble();
@@ -123,6 +111,8 @@ public class CVBTuple implements Writable {
         }
       }
     }
+    if(count != tuple.count) { return false; }
+    if(topic != tuple.topic) { return false; }
 
     return true;
   }
@@ -148,10 +138,29 @@ public class CVBTuple implements Writable {
     return result;
   }
 
+  @Override public void write(DataOutput out) throws IOException {
+    byte existenceByte = existenceByte();
+    out.writeByte(existenceByte);
+    if((existenceByte & 1) != 0) {
+      out.writeInt(termId);
+      out.writeInt(documentId);
+      out.writeDouble(itemCount);
+    }
+    for(AggregationBranch branch : AggregationBranch.values()) {
+      if((existenceByte & branchMasks.get(branch)) != 0) {
+        writeArray(out, counts.get(branch));
+      }
+    }
+    if((existenceByte & 16) != 0) {
+      out.writeInt(topic);
+      out.writeDouble(count);
+    }
+  }
+
   @Override public void readFields(DataInput in) throws IOException {
     initialize();
     byte existenceByte = in.readByte();
-    if((existenceByte & 0x1) != 0) {
+    if((existenceByte & 1) != 0) {
       termId = in.readInt();
       documentId = in.readInt();
       itemCount = in.readDouble();
@@ -162,7 +171,7 @@ public class CVBTuple implements Writable {
         counts.put(branch, a);
       }
     }
-    if((existenceByte & 0x16) != 0) {
+    if((existenceByte & 16) != 0) {
       topic = in.readInt();
       count = in.readDouble();
     }
@@ -191,14 +200,14 @@ public class CVBTuple implements Writable {
   }
 
   private byte existenceByte() {
-    byte b = (byte)(itemCount > 0 ? 0x1 : 0);
+    byte b = (byte)(itemCount > 0 ? 1 : 0);
     for(AggregationBranch branch : AggregationBranch.values()) {
       if(counts.containsKey(branch)) {
         b = (byte)(b | branchMasks.get(branch));
       }
     }
     if(topic >= 0 && count >= 0) {
-      b = (byte)(b | 0x16);
+      b = (byte)(b | 16);
     }
     return b;
   }

@@ -36,6 +36,8 @@ public class CVB0Reducer extends Reducer<CVBKey, CVBTuple, CVBKey, CVBTuple> {
       if(tuple.getTopic() >= 0 && tuple.getCount() >= 0) {
         // still aggregating counts
         aggregateTuple.sparseAccumulate(branch, tuple);
+      } else if(tuple.hasData(branch)) {
+        aggregateTuple.accumulate(branch, tuple);
       } else {
         // done aggregating, tag corpus entry and re-emit
         key.setDocId(tuple.getDocumentId());

@@ -146,6 +146,8 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     outputKey.setB(true);
     outputValue.clearCounts();
     outputValue.setItemCount(-1);
+    outputValue.setCount(-1);
+    outputValue.setTopic(-1);
     outputValue.setCount(AggregationBranch.TOPIC_SUM, topicSum);
     for(int partition = 0; partition < topicSumPartitioningFactor; partition++) {
       outputKey.setDocId(-(1 + partition));
@@ -183,7 +185,9 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     outputKey.setBranch(AggregationBranch.of(termId, docId));
 
     outputValue.clearCounts();
-    if(forAggregating) {
+    outputValue.setTopic(-1);
+    outputValue.setCount(-1);
+    if(!forAggregating) {
       outputValue.setItemCount(currentCount);
       outputValue.setDocumentId(currentDocId);
       outputValue.setTermId(currentTermId);

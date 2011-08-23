@@ -1,6 +1,10 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import com.google.common.io.ByteArrayDataInput;
+import com.google.common.io.ByteArrayDataOutput;
+import com.google.common.io.ByteStreams;
 import org.apache.mahout.common.MahoutTestCase;
+import org.apache.mahout.common.Pair;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -8,6 +12,38 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 
 public class TestCVBComparators extends MahoutTestCase {
+
+  @Test
+  public void testTupleWritablility() throws Exception {
+    assertReadsWrites(tuple(-1, 23, 42.4, 0, 22.0));
+    assertReadsWrites(tuple(2, -1, 33.0, -1, -1,
+        Pair.of(AggregationBranch.DOC_TOPIC, new double[] {1.2, 0.1, 0.43})));
+    assertReadsWrites(tuple(-1, -1, -1, -1, -1));
+  }
+
+  private CVBTuple tuple(int termId, int docId, double itemCount, int topic, double count,
+      Pair<AggregationBranch, double[]>... counts) {
+    CVBTuple tuple = new CVBTuple();
+    tuple.setTermId(termId);
+    tuple.setDocumentId(docId);
+    tuple.setItemCount(itemCount);
+    tuple.setTopic(topic);
+    tuple.setCount(count);
+    for(Pair<AggregationBranch, double[]> pair : counts) {
+      tuple.setCount(pair.getFirst(), pair.getSecond());
+    }
+    return tuple;
+  }
+
+  private void assertReadsWrites(CVBTuple tuple) throws Exception {
+    ByteArrayDataOutput output = ByteStreams.newDataOutput();
+    tuple.write(output);
+    byte[] bytes = output.toByteArray();
+    ByteArrayDataInput input = ByteStreams.newDataInput(bytes);
+    CVBTuple newTuple = new CVBTuple();
+    newTuple.readFields(input);
+    assertEquals(tuple, newTuple);
+  }
 
   @Test
   public void testCVBSortingComparator() throws Exception {
@@ -50,5 +86,4 @@ public class TestCVBComparators extends MahoutTestCase {
         key2Bytes, 0, key2Bytes.length);
     assertEquals(expected, result);
   }
-
 }
