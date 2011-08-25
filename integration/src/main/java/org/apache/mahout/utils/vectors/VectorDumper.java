@@ -175,8 +175,10 @@ public final class VectorDumper {
             writer.write('\n');
           }
 
-          long numItems = Long.MAX_VALUE;
+          boolean limitNumItems = false;
+          long numItems = 0;
           if (cmdLine.hasOption(numItemsOpt)) {
+            limitNumItems = true;
             numItems = Long.parseLong(cmdLine.getValue(numItemsOpt).toString());
             writer.append("#Max Items to dump: ").append(String.valueOf(numItems)).append('\n');
           }
@@ -185,10 +187,12 @@ public final class VectorDumper {
           for (FileStatus s : inputPaths) {
             Path path = s.getPath();
             log.info("Processing '" + path + "' (" + (++fileIndex) + "/" + inputPaths.length + ")");
-            long count = dump(conf, s.getPath(), writer, dictionary, sortVectors, numItems, printKey,
+            long count = dump(conf, s.getPath(), writer, dictionary, sortVectors, limitNumItems, numItems, printKey,
                 transposeKeyValue, sizeOnly, useCSV, namesAsComments);
-            numItems -= count;
-            if (numItems <= 0) break;
+            if (limitNumItems) {
+              numItems -= count;
+              if (numItems <= 0) break;
+            }
           }
 
         } finally {
@@ -203,7 +207,7 @@ public final class VectorDumper {
   }
 
   private static long dump(Configuration conf, Path path, Writer writer,
-      String[] dictionary, boolean sortVectors, long numItems, boolean printKey,
+      String[] dictionary, boolean sortVectors, boolean limitNumItems, long numItems, boolean printKey,
       boolean transposeKeyValue, boolean sizeOnly, boolean useCSV, boolean namesAsComments)
       throws IOException {
     SequenceFileIterable<Writable, Writable> iterable =
@@ -211,7 +215,7 @@ public final class VectorDumper {
     Iterator<Pair<Writable, Writable>> iterator = iterable.iterator();
     long i = 0;
     long count = 0;
-    while (iterator.hasNext() && count < numItems) {
+    while (iterator.hasNext() && (!limitNumItems || count < numItems)) {
       Pair<Writable, Writable> record = iterator.next();
       Writable keyWritable = record.getFirst();
       Writable valueWritable = record.getSecond();
