@@ -54,7 +54,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private int minDfCt;
   private double maxDfPct;
 
-  private boolean cacheResiduals = false;
+  private boolean cacheResiduals = true;
 
   private Map<String, Integer> termIdMap;
   private String[] terms;  // of length numTerms;
