@@ -40,8 +40,9 @@ import org.slf4j.LoggerFactory;
  * <dd>Input path for {@code SequenceFile<IntWritable, VectorWritable>} document vectors. See
  * {@link SparseVectorsFromSequenceFiles} for details on how to generate this input format.</dd>
  * <dt>{@code --dictionary path}</dt>
- * <dd>Path to dictionary generated during construction of input document vectors. If set, this data
- * is scanned to determine an appropriate value for option {@code --num_terms}.</dd>
+ * <dd>Path to dictionary file(s) generated during construction of input document vectors (glob
+ * expression supported). If set, this data is scanned to determine an appropriate value for option
+ * {@code --num_terms}.</dd>
  * <dt>{@code --output path}</dt>
  * <dd>Output path for topic-term distributions.</dd>
  * <dt>{@code --doc_topic_output path}</dt>
@@ -96,7 +97,7 @@ public class CVB0Driver extends AbstractJob {
     addOption(NUM_TERMS, "nt", "Vocabulary size", false);
     addOption(DOC_TOPIC_SMOOTHING, "a", "Smoothing for document/topic distribution", "0.1");
     addOption(TERM_TOPIC_SMOOTHING, "e", "Smoothing for topic/term distribution, 0.1");
-    addOption(DICTIONARY, "dict", "Path to term-dictionary file", false);
+    addOption(DICTIONARY, "dict", "Path to term-dictionary file(s) (glob expression supported)", false);
     addOption(DOC_TOPIC_OUTPUT, "dt", "Output path for the training doc/topic distribution", false);
     addOption(MODEL_TEMP_DIR, "mt", "Path to intermediate model path (useful for restarting)", false);
     addOption(ITERATION_BLOCK_SIZE, "block", "Number of iterations per perplexity check", "10");
@@ -137,12 +138,14 @@ public class CVB0Driver extends AbstractJob {
 
   private int getNumTerms(Configuration conf, Path dictionaryPath) throws IOException {
     FileSystem fs = dictionaryPath.getFileSystem(conf);
-    SequenceFile.Reader reader = new SequenceFile.Reader(fs, dictionaryPath, conf);
     Text key = new Text();
     IntWritable value = new IntWritable();
     int maxTermId = -1;
-    while(reader.next(key, value)) {
-      maxTermId = Math.max(maxTermId, value.get());
+    for (FileStatus stat : fs.globStatus(dictionaryPath)) {
+      SequenceFile.Reader reader = new SequenceFile.Reader(fs, stat.getPath(), conf);
+      while (reader.next(key, value)) {
+        maxTermId = Math.max(maxTermId, value.get());
+      }
     }
     return maxTermId + 1;
   }
@@ -256,26 +259,6 @@ public class CVB0Driver extends AbstractJob {
       log.info("read " + i + " perplexity values");
     }
     return perplexity;
-  }
-
-
-  private Job writeTopicModel(Path input, Path output)
-      throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Writing final topic model from " + input + " to " + output;
-    log.info("About to run: " + jobName);
-    Job job = new Job(getConf(), jobName);
-    job.setMapperClass(TopicOutputMapper.class);
-    job.setCombinerClass(TopicOutputReducer.class);
-    job.setReducerClass(TopicOutputReducer.class);
-    job.setInputFormatClass(SequenceFileInputFormat.class);
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
-    job.setOutputKeyClass(IntPairWritable.class);
-    job.setOutputValueClass(DoubleWritable.class);
-    FileInputFormat.addInputPath(job, input);
-    FileOutputFormat.setOutputPath(job, output);
-    job.setJarByClass(CVB0Driver.class);
-    job.submit();
-    return job;
   }
 
   private Job writeTopicModelVectors(Path input, Path output, int numTerms)
