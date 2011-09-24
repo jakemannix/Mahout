@@ -21,7 +21,6 @@ import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
-import org.apache.mahout.common.IntPairWritable;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.math.VectorWritable;
@@ -411,8 +410,6 @@ public class CVB0Driver extends AbstractJob {
     runIterationStage1(conf, stage1input, stage1output, iterationNumber);
     runIterationStage2(conf, stage1input, stage1output, iterationNumber);
   }
-
-  private static class TopicOutputReducer extends UniquingReducer<IntPairWritable, DoubleWritable> {}
 
   private static class TopicTermOutputReducer extends UniquingReducer<CVBKey, CVBTuple> {}
 
