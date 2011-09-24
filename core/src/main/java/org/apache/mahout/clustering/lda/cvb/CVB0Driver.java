@@ -1,5 +1,8 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import java.io.IOException;
+import java.util.Arrays;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -22,15 +25,52 @@ import org.apache.mahout.common.IntPairWritable;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.math.VectorWritable;
+import org.apache.mahout.vectorizer.SparseVectorsFromSequenceFiles;
 import org.apache.mahout.vectorizer.common.PartialVectorMergeReducer;
 import org.apache.mahout.vectorizer.common.PartialVectorMerger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-
 /**
- * ./bin/mahout distcvb0 --input /path/to/drm_data --output /output --num_topics
+ * Usage: <code>./bin/mahout cvb <i>options</i></code>
+ * <p>
+ * Valid options include:
+ * <dl>
+ * <dt>{@code --input path}</td>
+ * <dd>Input path for {@code SequenceFile<IntWritable, VectorWritable>} document vectors. See
+ * {@link SparseVectorsFromSequenceFiles} for details on how to generate this input format.</dd>
+ * <dt>{@code --dictionary path}</dt>
+ * <dd>Path to dictionary file(s) generated during construction of input document vectors (glob
+ * expression supported). If set, this data is scanned to determine an appropriate value for option
+ * {@code --num_terms}.</dd>
+ * <dt>{@code --output path}</dt>
+ * <dd>Output path for topic-term distributions.</dd>
+ * <dt>{@code --doc_topic_output path}</dt>
+ * <dd>Output path for doc-topic distributions.</dd>
+ * <dt>{@code --num_topics k}</dt>
+ * <dd>Number of latent topics.</dd>
+ * <dt>{@code --num_terms nt}</dt>
+ * <dd>Number of unique features defined by input document vectors. If option {@code --dictionary}
+ * is defined, this option is ignored.</dd>
+ * <dt>{@code --topic_model_temp_dir path}</dt>
+ * <dd>Path in which to store model state after each iteration.</dd>
+ * <dt>{@code --maxIter i}</dt>
+ * <dd>Maximum number of iterations to perform. If this value is less than or equal to the number of
+ * iteration states found beneath the path specified by option {@code --topic_model_temp_dir}, no
+ * further iterations are performed. Instead, output topic-term and doc-topic distributions are
+ * generated using data from the specified iteration.</dd>
+ * <dt>{@code --doc_topic_smoothing a}</dt>
+ * <dd>Smoothing for doc-topic distribution. Defaults to {@code 0.1}.</dd>
+ * <dt>{@code --term_topic_smoothing e}</dt>
+ * <dd>Smoothing for topic-term distribution. Defaults to {@code 0.1}.</dd>
+ * <dt>{@code --random_seed seed}</dt>
+ * <dd>Integer seed for random number generation.</dd>
+ * <dt>{@code --test_set_percentage p}</dt>
+ * <dd>Fraction of data to hold out for testing. Defaults to {@code 0.0}.</dd>
+ * <dt>{@code --iteration_block_size block}</dt>
+ * <dd>Number of iterations between perplexity checks. Defaults to {@code 10}. This option is
+ * ignored unless option {@code --test_set_percentage} is greater than zero.</dd>
+ * </dl>
  */
 public class CVB0Driver extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(CVB0Driver.class);
@@ -44,7 +84,7 @@ public class CVB0Driver extends AbstractJob {
   public static final String MODEL_TEMP_DIR = "topic_model_temp_dir";
   public static final String ITERATION_BLOCK_SIZE = "iteration_block_size";
   public static final String RANDOM_SEED = "random_seed";
-  private static final String TEST_SET_PERCENTAGE = "test_set_percentage";
+  public static final String TEST_SET_PERCENTAGE = "test_set_percentage";
 
   @Override public int run(String[] args) throws Exception {
     addInputOption();
@@ -57,7 +97,7 @@ public class CVB0Driver extends AbstractJob {
     addOption(NUM_TERMS, "nt", "Vocabulary size", false);
     addOption(DOC_TOPIC_SMOOTHING, "a", "Smoothing for document/topic distribution", "0.1");
     addOption(TERM_TOPIC_SMOOTHING, "e", "Smoothing for topic/term distribution, 0.1");
-    addOption(DICTIONARY, "dict", "Path to term-dictionary file", false);
+    addOption(DICTIONARY, "dict", "Path to term-dictionary file(s) (glob expression supported)", false);
     addOption(DOC_TOPIC_OUTPUT, "dt", "Output path for the training doc/topic distribution", false);
     addOption(MODEL_TEMP_DIR, "mt", "Path to intermediate model path (useful for restarting)", false);
     addOption(ITERATION_BLOCK_SIZE, "block", "Number of iterations per perplexity check", "10");
@@ -98,12 +138,14 @@ public class CVB0Driver extends AbstractJob {
 
   private int getNumTerms(Configuration conf, Path dictionaryPath) throws IOException {
     FileSystem fs = dictionaryPath.getFileSystem(conf);
-    SequenceFile.Reader reader = new SequenceFile.Reader(fs, dictionaryPath, conf);
     Text key = new Text();
     IntWritable value = new IntWritable();
     int maxTermId = -1;
-    while(reader.next(key, value)) {
-      maxTermId = Math.max(maxTermId, value.get());
+    for (FileStatus stat : fs.globStatus(dictionaryPath)) {
+      SequenceFile.Reader reader = new SequenceFile.Reader(fs, stat.getPath(), conf);
+      while (reader.next(key, value)) {
+        maxTermId = Math.max(maxTermId, value.get());
+      }
     }
     return maxTermId + 1;
   }
@@ -133,6 +175,8 @@ public class CVB0Driver extends AbstractJob {
     if(iterationNumber < 0) {
       runStage0(conf, inputPath, topicModelStateTempPath);
       iterationNumber = 0;
+    } else if (iterationNumber > maxIterations) {
+      iterationNumber = maxIterations;
     }
     conf.set(CVB0Mapper.NUM_TOPICS, String.valueOf(numTopics));
     conf.set(CVB0Mapper.NUM_TERMS, String.valueOf(numTerms));
@@ -160,11 +204,23 @@ public class CVB0Driver extends AbstractJob {
     Job docInferenceJob = docTopicOutputPath != null
         ? writeDocTopicInference(finalIterationData, docTopicOutputPath)
         : null;
-    if(!topicWritingJob.waitForCompletion(true)) {
-      return -1;
-    }
-    if(docInferenceJob != null && !docInferenceJob.waitForCompletion(true)) {
-      return -1;
+    try {
+      if(!topicWritingJob.waitForCompletion(true)) {
+        return -1;
+      }
+      if(docInferenceJob != null && !docInferenceJob.waitForCompletion(true)) {
+        return -1;
+      }
+    } finally {
+      // get rid of temp paths
+      Path[] tmpPaths = FileInputFormat.getInputPaths(topicWritingJob);
+      if (tmpPaths != null && tmpPaths.length > 0) {
+        try {
+          HadoopUtil.delete(conf, tmpPaths);
+        } catch (Exception e) {
+          log.error("Failed to delete temp paths '" + Arrays.toString(tmpPaths) + "'");
+        }
+      }
     }
     return 0;
   }
@@ -205,26 +261,6 @@ public class CVB0Driver extends AbstractJob {
     return perplexity;
   }
 
-
-  private Job writeTopicModel(Path input, Path output)
-      throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Writing final topic model from " + input + " to " + output;
-    log.info("About to run: " + jobName);
-    Job job = new Job(getConf(), jobName);
-    job.setMapperClass(TopicOutputMapper.class);
-    job.setCombinerClass(TopicOutputReducer.class);
-    job.setReducerClass(TopicOutputReducer.class);
-    job.setInputFormatClass(SequenceFileInputFormat.class);
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
-    job.setOutputKeyClass(IntPairWritable.class);
-    job.setOutputValueClass(DoubleWritable.class);
-    FileInputFormat.addInputPath(job, input);
-    FileOutputFormat.setOutputPath(job, output);
-    job.setJarByClass(CVB0Driver.class);
-    job.submit();
-    return job;
-  }
-
   private Job writeTopicModelVectors(Path input, Path output, int numTerms)
       throws ClassNotFoundException, IOException, InterruptedException {
     String jobName = "Writing final topic model (as vectors, dimension: " + numTerms + ") from "
@@ -240,7 +276,7 @@ public class CVB0Driver extends AbstractJob {
     job.setOutputKeyClass(CVBKey.class);
     job.setOutputValueClass(CVBTuple.class);
     FileInputFormat.addInputPath(job, input);
-    Path intermediatePath = new Path(input.getParent(), "topicModelTemp");
+    Path intermediatePath = new Path(input.getParent(), "topicModelTemp-" + System.nanoTime());
     FileOutputFormat.setOutputPath(job, intermediatePath);
     job.setJarByClass(CVB0Driver.class);
     if(!job.waitForCompletion(true)) {
@@ -285,7 +321,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runStage0(Configuration conf, Path inputPath, Path topicModelStateTempPath)
       throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage0, converting " + inputPath + "to CVB format";
+    String jobName = "Stage 0, converting " + inputPath + " to CVB format";
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(DistributedRowMatrixInputMapper.class);
@@ -325,7 +361,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runIterationStage1(Configuration conf, Path stage1input, Path stage1output,
       int iterationNumber) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage1, iteration " + iterationNumber + ", input path: " + stage1input;
+    String jobName = "Stage 1, iteration " + iterationNumber + ", input path: " + stage1input;
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(CVB0Mapper.class);
@@ -351,7 +387,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runIterationStage2(Configuration conf, Path stage1input, Path stage1output,
       int iterationNumber) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage2, iteration " + iterationNumber + ", input path: " + stage1output;
+    String jobName = "Stage 2, iteration " + iterationNumber + ", input path: " + stage1output;
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(Mapper.class);
