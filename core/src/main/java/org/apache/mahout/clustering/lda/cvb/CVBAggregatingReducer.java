@@ -15,6 +15,7 @@ public class CVBAggregatingReducer extends Reducer<CVBKey, CVBTuple, CVBKey, CVB
     CVBTuple outputTuple = new CVBTuple();
     int numTuplesForKey = 0;
     for(CVBTuple tuple : values) {
+      numTuplesForKey++;
       for(AggregationBranch branch : AggregationBranch.values()) {
         double[] counts = tuple.getCount(branch);
         if(counts != null) {
