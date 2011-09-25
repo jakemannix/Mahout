@@ -1,8 +1,19 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -19,18 +30,6 @@ import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
-import org.junit.Before;
-import org.junit.Test;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
 
 
 public class TestCVBStage1 extends MahoutTestCase {
@@ -45,6 +44,7 @@ public class TestCVBStage1 extends MahoutTestCase {
 
 //  @Override
 //  @Before
+  @Override
   public void setUp() throws Exception {
     super.setUp();
     Configuration conf = new Configuration();
@@ -406,9 +406,9 @@ public class TestCVBStage1 extends MahoutTestCase {
     CVB0Driver driver = new CVB0Driver();
     Path stage1Input = CVB0Driver.stage1InputPath(getTopicModelStatePath(), 0);
     Path stage1Output = CVB0Driver.stage1OutputPath(getTopicModelStatePath(), 0);
-    driver.runIterationStage1(fs.getConf(), stage1Input, stage1Output, 1);
+    driver.runIterationStage1(fs.getConf(), stage1Input, stage1Output, 1, 1);
 
-    driver.runIterationStage2(fs.getConf(), stage1Input, stage1Output, 1);
+    driver.runIterationStage2(fs.getConf(), stage1Input, stage1Output, 1, 1);
 
 
     Path partFile = null;
