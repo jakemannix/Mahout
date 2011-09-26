@@ -8,6 +8,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.SequenceFile;
+import org.apache.mahout.clustering.ClusteringTestUtils;
 import org.apache.mahout.common.DummyRecordWriter;
 import org.apache.mahout.common.MahoutTestCase;
 import org.apache.mahout.common.Pair;
@@ -43,8 +44,8 @@ public class TestCVBStage1 extends MahoutTestCase {
 
   private FileSystem fs;
 
-//  @Override
-//  @Before
+  @Override
+  @Before
   public void setUp() throws Exception {
     super.setUp();
     Configuration conf = new Configuration();
@@ -54,7 +55,7 @@ public class TestCVBStage1 extends MahoutTestCase {
     conf.set(CVB0Mapper.ETA, String.valueOf(0.01));
     conf.set(CVB0Mapper.RANDOM_SEED, String.valueOf(1234));
     fs = FileSystem.get(conf);
-//    ClusteringTestUtils.writePointsToFile(points(), true, corpusPath(), fs, conf);
+    ClusteringTestUtils.writePointsToFile(points(), true, corpusPath(), fs, conf);
   }
 
   public void testStage0() throws Exception {
@@ -401,6 +402,7 @@ public class TestCVBStage1 extends MahoutTestCase {
   }
 
 
+  @Test
   public void testStage1() throws Exception {
     testStage0();
     CVB0Driver driver = new CVB0Driver();
