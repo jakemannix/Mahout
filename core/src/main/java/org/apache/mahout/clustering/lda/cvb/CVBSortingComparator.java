@@ -9,11 +9,20 @@ import org.apache.hadoop.io.WritableComparator;
  */
 public class CVBSortingComparator extends WritableComparator {
   /**
+   * @param x
+   * @param y
+   * @return -1 if x is less than y, 1 if x is greater than y, and 0 if x and y are equal.
+   */
+  public static int compare(int x, int y) {
+    return (x < y) ? -1 : ((x > y) ? 1 : 0);
+  }
+
+  /**
    * Sorts raw CVBKey bytes by (1) termId, desc (2) docId, desc.
    */
   public static int compareNoBooleanCheck(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2) {
     // compare termIds
-    int c = -(readInt(b1, s1) - readInt(b2, s2));
+    int c = -compare(readInt(b1, s1), readInt(b2, s2));
     if (c != 0) {
       return c;
     }
@@ -23,7 +32,7 @@ public class CVBSortingComparator extends WritableComparator {
     s2 += 4;
 
     // compare docIds
-    return -(readInt(b1, s1) - readInt(b2, s2));
+    return -compare(readInt(b1, s1), readInt(b2, s2));
   }
 
   protected CVBSortingComparator() {
@@ -48,6 +57,6 @@ public class CVBSortingComparator extends WritableComparator {
     s2 += 8;
 
     // return reverse sorting of the boolean as a byte (1 == true, 0 == false)
-    return -(b1[s1] - b2[s2]);
+    return -compare(b1[s1], b2[s2]);
   }
 }
