@@ -1,10 +1,10 @@
 package org.apache.mahout.clustering.lda.cvb;
 
-import org.apache.hadoop.io.WritableComparable;
-
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+
+import org.apache.hadoop.io.WritableComparable;
 
 /**
  * serialized format: bytes:
@@ -40,6 +40,7 @@ public class CVBKey implements WritableComparable<CVBKey> {
     if(i != 0) {
       return i;
     }
+    // TODO(Jake): Why is order reversed from that of CVBSortingComparator?
     if(this.b && !cvbKey.b) {
       return 1;
     }
@@ -50,6 +51,7 @@ public class CVBKey implements WritableComparable<CVBKey> {
   }
 
   public int compareToOnlyIgnoreBoolean(CVBKey cvbKey) {
+    // TODO(Jake): Why is order reversed from that of CVBSortingComparator?
     if(this.termId > cvbKey.termId) {
       return 1;
     }
@@ -62,7 +64,7 @@ public class CVBKey implements WritableComparable<CVBKey> {
     if(this.docId < cvbKey.docId) {
       return -1;
     }
-    if(this.branch != cvbKey.branch && (termId+1)*(docId+1) == 0) {
+    if(this.branch != cvbKey.branch && (this.termId < 0 || this.docId < 0)) {
       throw new IllegalStateException("docId, termId equal, but different branches:" +
         toString() + " : " + cvbKey.toString());
     }
@@ -120,6 +122,7 @@ public class CVBKey implements WritableComparable<CVBKey> {
     this.b = b;
   }
 
+  @Override
   public String toString() {
     DataOutput output = new StringDataOutput();
     try {

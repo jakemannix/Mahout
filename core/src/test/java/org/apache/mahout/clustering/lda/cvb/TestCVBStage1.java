@@ -408,9 +408,9 @@ public class TestCVBStage1 extends MahoutTestCase {
     CVB0Driver driver = new CVB0Driver();
     Path stage1Input = CVB0Driver.stage1InputPath(getTopicModelStatePath(), 0);
     Path stage1Output = CVB0Driver.stage1OutputPath(getTopicModelStatePath(), 0);
-    driver.runIterationStage1(fs.getConf(), stage1Input, stage1Output, 1);
+    driver.runIterationStage1(fs.getConf(), stage1Input, stage1Output, 1, 1);
 
-    driver.runIterationStage2(fs.getConf(), stage1Input, stage1Output, 1);
+    driver.runIterationStage2(fs.getConf(), stage1Input, stage1Output, 1, 1);
 
 
     Path partFile = null;

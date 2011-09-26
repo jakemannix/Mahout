@@ -21,7 +21,6 @@ import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
-import org.apache.mahout.common.IntPairWritable;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.math.VectorWritable;
@@ -187,18 +186,17 @@ public class CVB0Driver extends AbstractJob {
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations && previousPerplexity - perplexity > convergenceDelta) {
       iterationNumber++;
-      log.info("About to run iteration " + iterationNumber);
+      log.info("About to run iteration {} of {}", iterationNumber, maxIterations);
       Path stage1input = stage1InputPath(topicModelStateTempPath, iterationNumber - 1);
       Path stage1output = stage1OutputPath(topicModelStateTempPath, iterationNumber - 1);
-      runIteration(conf, stage1input, stage1output, iterationNumber);
+      runIteration(conf, stage1input, stage1output, iterationNumber, maxIterations);
       if(testFraction > 0 && iterationNumber % iterationBlockSize == 0) {
         previousPerplexity = perplexity;
         perplexity = calculatePerplexity(conf, stage1output);
-        log.info("current perplexity = " + perplexity);
+        log.info("Current perplexity = " + perplexity);
       }
     }
-    log.info("Completed {} iterations in {} seconds",
-        new Object[] {iterationNumber, (System.currentTimeMillis() - startTime)/1000} );
+    log.info("Completed {} iterations in {} seconds", iterationNumber, (System.currentTimeMillis() - startTime)/1000);
     Path finalIterationData = stage1InputPath(topicModelStateTempPath, iterationNumber);
     Job topicWritingJob = writeTopicModelVectors(finalIterationData, topicModelOutputPath, numTerms);
     Job docInferenceJob = docTopicOutputPath != null
@@ -248,7 +246,7 @@ public class CVB0Driver extends AbstractJob {
     FileSystem fs = FileSystem.get(conf);
     FileStatus[] statuses = fs.listStatus(outputPath, PathFilters.partFilter());
     for(FileStatus status : statuses) {
-      log.info("reading perplexity from: " + status.getPath());
+      log.info("Reading perplexity from: " + status.getPath());
       int i = 0;
       SequenceFile.Reader reader = new SequenceFile.Reader(fs, status.getPath(), conf);
       DoubleWritable d = new DoubleWritable();
@@ -256,15 +254,14 @@ public class CVB0Driver extends AbstractJob {
         perplexity += d.get();
         i++;
       }
-      log.info("read " + i + " perplexity values");
+      log.info("Read " + i + " perplexity values");
     }
     return perplexity;
   }
 
   private Job writeTopicModelVectors(Path input, Path output, int numTerms)
       throws ClassNotFoundException, IOException, InterruptedException {
-    String jobName = "Writing final topic model (as vectors, dimension: " + numTerms + ") from "
-                     + input + " to " + output;
+    String jobName = String.format("Writing final topic model (as vectors, dimension: %d) from %s to %s", numTerms, input, output);
     log.info("About to run: " + jobName);
     Configuration conf = new Configuration(getConf());
     Job job = new Job(conf, jobName);
@@ -302,7 +299,7 @@ public class CVB0Driver extends AbstractJob {
 
   private Job writeDocTopicInference(Path input, Path output)
       throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Writing final document/topic inference from " + input + " to " + output;
+    String jobName = String.format("Writing final document/topic inference from %s to %s", input, output);
     log.info("About to run: " + jobName);
     Job job = new Job(getConf(), jobName);
     job.setMapperClass(DocTopicOutputMapper.class);
@@ -321,7 +318,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runStage0(Configuration conf, Path inputPath, Path topicModelStateTempPath)
       throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage 0, converting " + inputPath + " to CVB format";
+    String jobName = String.format("Converting %s to CVB format", inputPath);
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(DistributedRowMatrixInputMapper.class);
@@ -360,8 +357,8 @@ public class CVB0Driver extends AbstractJob {
   }
 
   public void runIterationStage1(Configuration conf, Path stage1input, Path stage1output,
-      int iterationNumber) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage 1, iteration " + iterationNumber + ", input path: " + stage1input;
+      int iterationNumber, int maxIterations) throws IOException, ClassNotFoundException, InterruptedException {
+    String jobName = String.format("Iteration %d of %d, stage 1 of 2, input path: %s", iterationNumber, maxIterations, stage1input);
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(CVB0Mapper.class);
@@ -381,13 +378,13 @@ public class CVB0Driver extends AbstractJob {
     HadoopUtil.delete(conf, stage1output);
     job.setJarByClass(CVB0Driver.class);
     if(!job.waitForCompletion(true)) {
-      throw new InterruptedException("Failed to complete LDA phase 1 iteration " + iterationNumber);
+      throw new InterruptedException(String.format("Failed to complete iteration %d stage 1", iterationNumber));
     }
   }
 
   public void runIterationStage2(Configuration conf, Path stage1input, Path stage1output,
-      int iterationNumber) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = "Stage 2, iteration " + iterationNumber + ", input path: " + stage1output;
+      int iterationNumber, int maxIterations) throws IOException, ClassNotFoundException, InterruptedException {
+    String jobName = String.format("Iteration %d of %d, stage 2 of 2, input path: %s", iterationNumber, maxIterations, stage1output);
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
     job.setMapperClass(Mapper.class);
@@ -402,17 +399,15 @@ public class CVB0Driver extends AbstractJob {
     FileOutputFormat.setOutputPath(job, stage1InputPath(stage1output.getParent(), iterationNumber));
     job.setJarByClass(CVB0Driver.class);
     if(!job.waitForCompletion(true)) {
-      throw new InterruptedException("Failed to complete aggregation (phase 2) of LDA " + iterationNumber);
+      throw new InterruptedException(String.format("Failed to complete iteration %d stage 2", iterationNumber));
     }
   }
 
-  public void runIteration(Configuration conf, Path stage1input, Path stage1output, int iterationNumber)
+  public void runIteration(Configuration conf, Path stage1input, Path stage1output, int iterationNumber, int maxIterations)
       throws IOException, ClassNotFoundException, InterruptedException {
-    runIterationStage1(conf, stage1input, stage1output, iterationNumber);
-    runIterationStage2(conf, stage1input, stage1output, iterationNumber);
+    runIterationStage1(conf, stage1input, stage1output, iterationNumber, maxIterations);
+    runIterationStage2(conf, stage1input, stage1output, iterationNumber, maxIterations);
   }
-
-  private static class TopicOutputReducer extends UniquingReducer<IntPairWritable, DoubleWritable> {}
 
   private static class TopicTermOutputReducer extends UniquingReducer<CVBKey, CVBTuple> {}
 

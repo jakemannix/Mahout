@@ -1,20 +1,23 @@
 package org.apache.mahout.clustering.lda.cvb;
 
-import org.apache.hadoop.io.RawComparator;
+import org.apache.hadoop.io.WritableComparator;
 
-public class CVB0GroupingComparator implements RawComparator {
-
-  @Override public int compare(byte[] bytes, int start, int len,
-                               byte[] bytes1, int start1, int len1) {
-    // just sort without the boolean: termId first, then docId.  Should return 0 if docId and termId are equal
-    return CVBSortingComparator.compareNoBooleanCheck(bytes, start, len, bytes1, start1, len1);
+public class CVB0GroupingComparator extends WritableComparator {
+  public CVB0GroupingComparator() {
+    super(CVBKey.class);
   }
 
-  @Override public int compare(Object x, Object y) {
-    if(true)
-      throw new UnsupportedOperationException("NO!");
-    CVBKey k1 = (CVBKey)x;
-    CVBKey k2 = (CVBKey)y;
-    return k1.compareToOnlyIgnoreBoolean(k2);
+  @Override
+  public int compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2) {
+    /*
+     * Sort without the boolean: (1) termId, desc (2) docId, desc. Should return 0 if docId and
+     * termId are equal.
+     */
+    return CVBSortingComparator.compareNoBooleanCheck(b1, s1, l1, b2, s2, l2);
+  }
+
+  @Override
+  public int compare(Object x, Object y) {
+    throw new UnsupportedOperationException("Binary comparison should be used");
   }
 }
