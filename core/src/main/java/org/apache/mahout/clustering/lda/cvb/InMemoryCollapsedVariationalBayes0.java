@@ -13,12 +13,8 @@ import org.apache.commons.cli2.builder.DefaultOptionBuilder;
 import org.apache.commons.cli2.builder.GroupBuilder;
 import org.apache.commons.cli2.commandline.Parser;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.SequenceFile;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
@@ -26,18 +22,16 @@ import org.apache.mahout.common.CommandLineUtil;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterable;
-import org.apache.mahout.math.DenseVector;
+import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.RandomAccessSparseVector;
+import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
-import org.apache.mahout.math.function.Functions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -61,13 +55,10 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   private Vector[] corpusWeights; // length numDocs;
   private double totalCorpusWeight;
-  private Vector[][] gamma; // length numDocs, each of length numTopics
-  private Vector[][] gammaTimesCorpus; // length numDocs, each of length numTopics
-  private double[][] docTopicCounts; // length numDocs, each of length numTopics
-  private double[] docNorms; // length numDocs
-  private double[][] topicTermCounts; // length numTerms, each of length numTopics
 
-  private double[] topicCounts; // sum_a (t(x,a)) = t_x
+  private Matrix docTopicCounts;
+
+  private TopicModel topicModel;
 
   private InMemoryCollapsedVariationalBayes0() {
     // only for main usage
@@ -178,164 +169,10 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     return termCounts;
   }
 
-  private void initializeModelNoResiduals() {
-    topicTermCounts = new double[numTerms][];
-    for(int t = 0; t < topicTermCounts.length; t++) {
-      topicTermCounts[t] = new double[numTopics];
-    }
-    docTopicCounts = new double[numDocuments][];
-    for(int i = 0; i < numDocuments; i++) {
-      docTopicCounts[i] = new double[numTopics];
-    }
-    docNorms = new double[numDocuments];
-    topicCounts = new double[numTopics];
-    Random random = new Random(1234);
-    for(int i = 0; i < numDocuments; i++) {
-      Vector document = corpusWeights[i];
-      if(document == null) {
-        continue;
-      }
-      Vector[] g = gamma(i);
-      Vector[] gtm = gammaTimesCorpus(i);
-      Iterator<Vector.Element> it = document.iterateNonZero();
-      while(it.hasNext()) {
-        Vector.Element e = it.next();
-        double norm = 0;
-        for(int x=0; x<numTopics; x++) {
-          double d = random.nextDouble();
-          norm += d;
-          g[x].set(e.index(), d);
-        }
-        for(int x=0; x<numTopics; x++) {
-          double d = g[x].get(e.index()) / norm;
-          g[x].set(e.index(), d);
-        }
-      }
-      it = document.iterateNonZero();
-      while(it.hasNext()) {
-        Vector.Element e = it.next();
-        double[] currentTermTopicCounts = topicTermCounts[e.index()];
-        for(int x=0; x<numTopics; x++) {
-          double d = g[x].get(e.index()) * document.get(e.index());
-          gtm[x].set(e.index(), d);
-          currentTermTopicCounts[x] += d;
-          docTopicCounts[i][x] += d;
-        }
-      }
-      double di = 0;
-      for(int x=0; x<numTopics; x++) {
-        di += docTopicCounts[i][x];
-      }
-      docNorms[i] = di;
-    }
-  }
-
   private void initializeModel() {
-    if(cacheResiduals) {
-      initializeModelCacheResiduals();
-    } else {
-      initializeModelNoResiduals();
-    }
-  }
-
-  private void initializeModelCacheResiduals() {
-    Random random = new Random(1234);
-    gamma = new Vector[numDocuments][];
-    gammaTimesCorpus = new Vector[numDocuments][];
-    topicTermCounts = new double[numTerms][];
-    for(int t = 0; t < topicTermCounts.length; t++) {
-      topicTermCounts[t] = new double[numTopics];
-    }
-    docTopicCounts = new double[numDocuments][];
-    for(int i = 0; i < numDocuments; i++) {
-      docTopicCounts[i] = new double[numTopics];
-    }
-    docNorms = new double[numDocuments];
-    topicCounts = new double[numTopics];
-    for(int i=0; i<corpusWeights.length; i++) {
-      Vector document = corpusWeights[i];
-      if(document == null) {
-        continue;
-      }
-      // initialize model
-      gamma[i] = new Vector[numTopics];
-      gammaTimesCorpus[i] = new Vector[numTopics];
-      for(int x = 0; x < numTopics; x++) {
-        gamma[i][x] = new RandomAccessSparseVector(numTerms, document.getNumNondefaultElements());
-        gammaTimesCorpus[i][x] = new RandomAccessSparseVector(numTerms, document.getNumNondefaultElements());
-      }
-      Iterator<Vector.Element> it = document.iterateNonZero();
-      while(it.hasNext()) {
-        Vector.Element e = it.next();
-        double norm = 0;
-        for(int x=0; x<numTopics; x++) {
-          double d = random.nextDouble();
-          norm += d;
-          gamma[i][x].set(e.index(), d);
-        }
-        for(int x=0; x<numTopics; x++) {
-          double d = gamma[i][x].get(e.index()) / norm;
-          gamma[i][x].set(e.index(), d);
-        }
-      }
-      it = document.iterateNonZero();
-      while(it.hasNext()) {
-        Vector.Element e = it.next();
-        double[] currentTermTopicCounts = topicTermCounts[e.index()];
-        for(int x=0; x<numTopics; x++) {
-          double d = gamma[i][x].get(e.index()) * document.get(e.index());
-          gammaTimesCorpus[i][x].set(e.index(), d);
-          currentTermTopicCounts[x] += d;
-          docTopicCounts[i][x] += d;
-        }
-      }
-      double di = 0;
-      for(int x=0; x<numTopics; x++) {
-        di += docTopicCounts[i][x];
-      }
-      docNorms[i] = di;
-    }
-    for(int a = 0; a < numTerms; a++) {
-      double[] currentTermTopicCounts = topicTermCounts[a];
-      for(int x=0; x<numTopics; x++) {
-        topicCounts[x] += currentTermTopicCounts[x];
-      }
-    }
-  }
-
-  private int currentTemp = -1;
-  private Vector[] tempGamma;
-  private int currentTempTimesCorpus = -1;
-  private Vector[] tempGammaTimesCorpus;
-
-  private Vector[] gamma(int docId) {
-    if(cacheResiduals) {
-      return gamma[docId];
-    } else {
-      if(tempGamma == null || docId != currentTemp) {
-        currentTemp = docId;
-        tempGamma = new Vector[numTopics];
-        for(int x = 0; x < numTopics; x++) {
-          tempGamma[x] = corpusWeights[docId].like();
-        }
-      }
-      return tempGamma;
-    }
-  }
-
-  private Vector[] gammaTimesCorpus(int docId) {
-    if(cacheResiduals) {
-      return gammaTimesCorpus[docId];
-    } else {
-      if(tempGammaTimesCorpus == null || docId != currentTempTimesCorpus) {
-        currentTempTimesCorpus = docId;
-        tempGammaTimesCorpus = new Vector[numTopics];
-        for(int x = 0; x < numTopics; x++) {
-          tempGammaTimesCorpus[x] = corpusWeights[docId].like();
-        }
-      }
-      return tempGammaTimesCorpus;
-    }
+    topicModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(1234), terms);
+    docTopicCounts = new DenseMatrix(numDocuments, numTopics);
+    docTopicCounts.assign(1/numTopics);
   }
 
   private void trainDocument(int docId) {
@@ -347,95 +184,19 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     if(document == null) {
       return;
     }
-    Vector[] docModel = gamma(docId);
-    Vector[] gammaTimesDocModel = gammaTimesCorpus(docId);
-    double[] currentDocTopicCounts = docTopicCounts[docId];
-
-    // update p(x|i,a) = docModel.get(a)[x] for terms a, topics x.
-    Iterator<Vector.Element> it = document.iterateNonZero();
-    while(it.hasNext()) {
-      Vector.Element e = it.next();
-      int term = e.index();
-      double norm = 0;
-      for(int x=0; x<numTopics; x++) {
-        double d = (topicTermCounts[term][x] + eta) / (topicCounts[x] + numTerms * eta);
-        d *= (currentDocTopicCounts[x] + alpha);
-        docModel[x].set(term, d);
-        norm += d;
-      }
-      for(int x = 0; x < numTopics; x++) {
-        double d = docModel[x].get(term) / norm;
-        docModel[x].set(term, d);
-      }
-      double termWeight = e.get();
-      for(int x=0; x<numTopics; x++) {
-        gammaTimesDocModel[x].set(term, docModel[x].get(term) * termWeight);
-      }
-    }
-    if(!cacheResiduals && updateModel) {
-      updateTopics(docId);
-    }
-    updateDocs(docId);
-  }
-
-  private void updateDocs(int docId) {
-    Vector[] gammaTimesCorpus = gammaTimesCorpus(docId);
-    docNorms[docId] = 0;
-    double[] currentDocTopicCounts = docTopicCounts[docId];
-    Arrays.fill(currentDocTopicCounts, 0);
-    for(int x = 0; x < numTopics; x++) {
-      Iterator<Vector.Element> it = gammaTimesCorpus[x].iterateNonZero();
-      while(it.hasNext()) {
-        Vector.Element e = it.next();
-        docNorms[docId] += e.get();
-        currentDocTopicCounts[x] += e.get();
-      }
-    }
-  }
-
-  private void updateTopics(int docId) {
-    Vector[] gammaTimesCorpus = gammaTimesCorpus(docId);
-    for(int x = 0; x < numTopics; x++) {
-      Iterator<Vector.Element> it = gammaTimesCorpus[x].iterateNonZero();
-      while(it.hasNext()) {
-        Vector.Element e = it.next();
-        topicTermCounts[e.index()][x] += e.get();
-        topicCounts[x] += e.get();
-      }
+    Matrix tempDocModel = new SparseRowMatrix(new int[]{numTopics, numTerms}, true);
+    tempDocModel.assign(0);
+    // first learn the document/topic distribution for one iteration
+    topicModel.trainDocTopicModel(document, docTopicCounts.getRow(docId), tempDocModel);
+    if(updateModel) {
+      topicModel.update(tempDocModel);
     }
   }
 
   private void inferDocuments(double convergence, int maxIter, boolean recalculate) {
     for(int docId = 0; docId < corpusWeights.length; docId++) {
-      inferDocument(docId, convergence, maxIter, recalculate);
-    }
-  }
-
-  private void inferDocument(int docId, double convergence, int maxIter, boolean recalculate) {
-    double docError = error(docId);
-    System.out.println(docError + " = initial Error[" + docId + "]");
-    int it = 0;
-    if(recalculate) {
-      System.out.println("re-initializing docTopics");
-      Random rand = new Random(1234 * (docId+1));
-      double total = 0;
-      for(int x = 0; x < numTopics; x++) {
-        docTopicCounts[docId][x] = 1;
-        total += docTopicCounts[docId][x];
-      }
-      for(int x = 0; x < numTopics; x++) {
-        docTopicCounts[docId][x] /= total;
-      }
-    }
-    double origError = docError;
-    docError = Double.MAX_VALUE;
-    while(docError > origError && it < maxIter) {
-      trainDocument(docId, false);
-      docError = error(docId);
-      if(it % 25 == 0) {
-        System.out.println(docError + " = e[" + it + "]");
-      }
-      it++;
+      Vector inferredDocument = topicModel.infer(corpusWeights[docId], docTopicCounts.getRow(docId));
+      // do what now?
     }
   }
 
@@ -447,62 +208,16 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     logTime("train documents", System.nanoTime() - start);
   }
 
-  // the auxiliary gamma has been updated already in the train() step, now update docTopicCounts
-  // and docNorms
-  private void aggregateDocUpdates(int docId) {
-    if(corpusWeights[docId] == null) {
-      return;
-    }
-    Vector[] txia = gammaTimesCorpus[docId];
-    double[] tix = new double[numTopics];
-    double di = 0;
-    for(int x = 0; x < numTopics; x++) {
-      Iterator<Vector.Element> it = txia[x].iterateNonZero();
-      while(it.hasNext()) {
-        Vector.Element e = it.next();
-        tix[x] += e.get();
-        di += e.get();
-      }
-    }
-    docTopicCounts[docId] = tix;
-    docNorms[docId] = di;
-  }
-
-  private void aggregateUpdates() {
-    long time = System.nanoTime();
-    for(int docId = 0; docId < numDocuments; docId++) {
-      aggregateDocUpdates(docId);
-    }
-    logTime("updateDocuments", System.nanoTime() - time);
-    time = System.nanoTime();
-    Arrays.fill(topicCounts, 0d);
-    for(int term = 0; term < numTerms; term++) {
-      Arrays.fill(topicTermCounts[term], 0d);
-    }
-    for(int docId = 0; docId < corpusWeights.length; docId++) {
-      if(corpusWeights[docId] == null) {
-        continue;
-      }
-      for(int x = 0; x < numTopics; x++) {
-        Vector g = gammaTimesCorpus[docId][x];
-        Iterator<Vector.Element> it = g.iterateNonZero();
-        while(it.hasNext()) {
-          Vector.Element e = it.next();
-          topicTermCounts[e.index()][x] += e.get();
-          topicCounts[x] += e.get();
-        }
-      }
-    }
-    logTime("udpateTerms", System.nanoTime() - time);
-  }
-
   private double error(int docId) {
     Vector docTermCounts = corpusWeights[docId];
     if(docTermCounts == null) {
       return 0;
     } else {
-      Vector expectedDocTermCounts = expectedDocumentCounts(docId);
-      return expectedDocTermCounts.minus(docTermCounts).norm(1);
+      Vector expectedDocTermCounts =
+          topicModel.infer(corpusWeights[docId], docTopicCounts.getRow(docId));
+      double expectedNorm = expectedDocTermCounts.norm(1);
+      return expectedDocTermCounts.times(docTermCounts.norm(1)/expectedNorm)
+          .minus(docTermCounts).norm(1);
     }
   }
 
@@ -516,40 +231,11 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     return error / totalCorpusWeight;
   }
 
-  private Vector expectedDocumentCounts(int docId) {
-    // compute p(topic | docId) for all topics
-    double[] pTopicDoc = new double[numTopics];
-    double[] docTopicCount = docTopicCounts[docId];
-    double expectedDocLength = docNorms[docId];
-    for(int x=0; x<numTopics; x++) {
-      pTopicDoc[x] = docTopicCount[x] / expectedDocLength;
-    }
-
-    Vector expectedVector = corpusWeights[docId].like();
-    Vector[] docModel = gamma(docId);
-
-    for(int x = 0; x < numTopics; x++) {
-      Vector docTopicModel = docModel[x];
-      Iterator<Vector.Element> it = docTopicModel.iterateNonZero();
-      while(it.hasNext()) {
-        Vector.Element e = it.next();
-        int term = e.index();
-        double pTermTopic = topicTermCounts[term][x] / topicCounts[x];
-        expectedVector.set(term,
-            expectedVector.get(term) + pTermTopic * pTopicDoc[x] / expectedDocLength);
-      }
-    }
-
-    return expectedVector.times(corpusWeights[docId].norm(1) / expectedVector.norm(1));
-  }
 
   public double iterate() {
     trainDocuments();
-    double error = 1;
-    if(cacheResiduals) {
-      aggregateUpdates();
-      error = error();
-    }
+    topicModel.renormalize();
+    double error = error();
     System.out.println(error + " = error");
     return error;
   }
@@ -560,6 +246,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     double oldError = 0;
     while(iter < minIter) {
       oldError = iterate();
+      System.out.println(topicModel.toString());
       iter++;
     }
     double newError = 0;
@@ -579,7 +266,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     }
     return newError;
   }
-
+/*
   public void writeTopicModel(int numTerms, Path outputPath) {
     Map<Integer, Map<String, Double>> pTopicTerm = Maps.newHashMap();
     for(int term = 0; term < topicTermCounts.length; term++) {
@@ -678,7 +365,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       }
     }
   }
-
+*/
   private static final void logTime(String label, long nanos) {
     System.out.println(label + " time: " + (double)(nanos)/1e6 + "ms");
   }
@@ -815,14 +502,14 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       logTime("total training time", System.nanoTime() - start);
 
       if(reInferDocTopics.equalsIgnoreCase("randstart")) {
-        cvb0.inferDocuments(0.0, 10000, true);
+        cvb0.inferDocuments(0.0, 100, true);
       } else if(reInferDocTopics.equalsIgnoreCase("continue")) {
-        cvb0.inferDocuments(0.0, 10000, false);
+        cvb0.inferDocuments(0.0, 100, false);
       }
 
       start = System.nanoTime();
-      cvb0.writeTopicModel(numTermsToPrint, new Path(topicOutFile));
-      cvb0.writeDocTopics(new Path(docOutFile));
+  //    cvb0.writeTopicModel(numTermsToPrint, new Path(topicOutFile));
+  //    cvb0.writeDocTopics(new Path(docOutFile));
       logTime("printTopics", System.nanoTime() - start);
     } catch (OptionException e) {
       log.error("Error while parsing options", e);
