@@ -3,6 +3,7 @@ package org.apache.mahout.clustering.lda.cvb;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.function.Functions;
@@ -13,6 +14,10 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class TopicModel {
   private final String[] dictionary;
@@ -24,27 +29,31 @@ public class TopicModel {
   private final double alpha;
 
   private Sampler sampler;
+  private ExecutorService threadPool = new ThreadPoolExecutor(32, 32, Integer.MAX_VALUE,
+      TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(100));
+  private Updater[] updaters;
+
+  public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary) {
+    this(numTopics, numTerms, eta, alpha, null, dictionary, 1);
+  }
 
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, Random random,
-      String[] dictionary) {
-    this.dictionary = dictionary;
-    this.numTopics = numTopics;
-    this.numTerms = numTerms;
-    this.eta = eta;
-    this.alpha = alpha;
-    this.sampler = new Sampler(random);
-    this.topicTermCounts = new SparseRowMatrix(new int[]{numTopics, numTerms}, true);
-    this.topicSums = new DenseVector(numTopics);
-    for(int x = 0; x < numTopics; x++) {
-      for(int term = 0; term < numTerms; term++) {
-        topicTermCounts.getRow(x).set(term, random.nextDouble());
-      }
-      topicSums.set(x, topicTermCounts.getRow(x).norm(1));
-    }
+      String[] dictionary, int numThreads) {
+    this(randomMatrix(numTopics, numTerms, random), eta, alpha, dictionary, numThreads);
+  }
+
+  private TopicModel(Pair<Matrix, Vector> model, double eta, double alpha, String[] dict,
+      int numThreads) {
+    this(model.getFirst(), model.getSecond(), eta, alpha, dict, numThreads);
   }
 
   public TopicModel(Matrix topicTermCounts, Vector topicSums, double eta, double alpha,
     String[] dictionary) {
+    this(topicTermCounts, topicSums, eta, alpha, dictionary, 1);
+  }
+
+  public TopicModel(Matrix topicTermCounts, Vector topicSums, double eta, double alpha,
+    String[] dictionary, int numThreads) {
     this.dictionary = dictionary;
     this.topicTermCounts = topicTermCounts;
     this.topicSums = topicSums;
@@ -53,12 +62,34 @@ public class TopicModel {
     this.eta = eta;
     this.alpha = alpha;
     this.sampler = new Sampler(new Random(1234));
+    updaters = new Updater[numThreads];
+    for(int i = 0; i < numThreads; i++) {
+      updaters[i] = new Updater();
+      threadPool.submit(updaters[i]);
+    }
+  }
+
+  private static Pair<Matrix,Vector> randomMatrix(int numTopics, int numTerms, Random random) {
+    Matrix topicTermCounts = new SparseRowMatrix(new int[]{numTopics, numTerms}, true);
+    Vector topicSums = new DenseVector(numTopics);
+    if(random != null) {
+      for(int x = 0; x < numTopics; x++) {
+        for(int term = 0; term < numTerms; term++) {
+          topicTermCounts.getRow(x).set(term, random.nextDouble());
+        }
+      }
+    }
+    for(int x = 0; x < numTopics; x++) {
+      topicSums.set(x, random == null ? 1d : topicTermCounts.getRow(x).norm(1));
+    }
+    return Pair.of(topicTermCounts, topicSums);
   }
 
   public String toString() {
     String buf = "";
     for(int x = 0; x < numTopics; x++) {
-      buf += vectorToSortedString(topicTermCounts.getRow(x), dictionary).substring(0, 1000) + "\n";
+      String v = vectorToSortedString(topicTermCounts.getRow(x), dictionary);
+      buf += v.substring(0, Math.min(1000, v.length())) + "\n";
     }
     return buf;
   }
@@ -69,6 +100,23 @@ public class TopicModel {
 
   public int sampleTerm(int topic) {
     return sampler.sample(topicTermCounts.getRow(topic));
+  }
+
+  public void reset() {
+    for(int x = 0; x < numTopics; x++) {
+      topicTermCounts.assignRow(x, new SequentialAccessSparseVector(numTerms));
+    }
+    topicSums.assign(1d);
+    for(int i = 0; i < updaters.length; i++) {
+      updaters[i] = new Updater();
+      threadPool.submit(updaters[i]);
+    }
+  }
+
+  public void awaitTermination() {
+    for(Updater updater : updaters) {
+      updater.shutdown();
+    }
   }
 
   public void renormalize() {
@@ -115,11 +163,22 @@ public class TopicModel {
 
   public void update(Matrix docTopicCounts) {
     for(int x = 0; x < numTopics; x++) {
-      docTopicCounts.getRow(x).addTo(topicTermCounts.getRow(x));
-      topicSums.set(x, topicSums.get(x) + docTopicCounts.getRow(x).norm(1));
+      updaters[x % updaters.length].update(x, docTopicCounts.getRow(x));
     }
   }
 
+  private void updateTopic(int topic, Vector docTopicCounts) {
+    docTopicCounts.addTo(topicTermCounts.getRow(topic));
+    topicSums.set(topic, topicSums.get(topic) + docTopicCounts.norm(1));
+  }
+
+  public void update(int termId, Vector topicCounts) {
+    for(int x = 0; x < numTopics; x++) {
+      Vector v = topicTermCounts.getRow(x);
+      v.set(termId, v.get(termId) + topicCounts.get(x));
+    }
+    topicCounts.addTo(topicSums);
+  }
 
   /**
    *
@@ -185,6 +244,61 @@ public class TopicModel {
       bldr.setCharAt(bldr.length() - 1, '}');
     }
     return bldr.toString();
+  }
+
+  private final class Updater implements Runnable {
+    private ArrayBlockingQueue<Pair<Integer, Vector>> queue =
+        new ArrayBlockingQueue<Pair<Integer, Vector>>(100);
+    private boolean shutdown = false;
+    private boolean shutdownComplete = false;
+
+    public void shutdown() {
+      try {
+        synchronized (this) {
+          while(!shutdownComplete) {
+            shutdown = true;
+            wait();
+          }
+        }
+      } catch (InterruptedException e) {
+        // log!
+      }
+    }
+
+    public void update(int topic, Vector v) {
+      if(shutdown) { // maybe don't do this?
+        throw new IllegalStateException("In SHUTDOWN state: cannot submit tasks");
+      }
+      while(true) { // keep trying if interrupted
+        try {
+          queue.put(Pair.of(topic, v));
+          return;
+        } catch (InterruptedException e) {
+          // log!
+        }
+      }
+    }
+
+    @Override public void run() {
+      while(!shutdown) {
+        try {
+          Pair<Integer, Vector> pair = queue.poll(1, TimeUnit.SECONDS);
+          if(pair != null) {
+            updateTopic(pair.getFirst(), pair.getSecond());
+          }
+        } catch (InterruptedException e) {
+          // log!
+        }
+      }
+      // in shutdown mode, finish remaining tasks!
+      for(Pair<Integer, Vector> pair : queue) {
+        updateTopic(pair.getFirst(), pair.getSecond());
+      }
+      synchronized (this) {
+        shutdownComplete = true;
+        notifyAll();
+      }
+    }
   }
 
 }

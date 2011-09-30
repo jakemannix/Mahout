@@ -36,6 +36,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(InMemoryCollapsedVariationalBayes0.class);
@@ -48,8 +51,6 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private int minDfCt;
   private double maxDfPct;
 
-  private boolean cacheResiduals = false;
-
   private Map<String, Integer> termIdMap;
   private String[] terms;  // of length numTerms;
 
@@ -59,6 +60,12 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private Matrix docTopicCounts;
 
   private TopicModel topicModel;
+  private TopicModel updatedModel;
+
+  private int numTrainingThreads;
+  private int numUpdatingThreads;
+
+  private ExecutorService threadPool;
 
   private InMemoryCollapsedVariationalBayes0() {
     // only for main usage
@@ -75,8 +82,14 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     initializeModel();
   }
 
+
   public InMemoryCollapsedVariationalBayes0(Vector[] corpus, String[] terms, int numTopics,
       double alpha, double eta) {
+    this(corpus, terms, numTopics, alpha, eta, 1, 1);
+  }
+
+  public InMemoryCollapsedVariationalBayes0(Vector[] corpus, String[] terms, int numTopics,
+      double alpha, double eta, int numTrainingThreads, int numUpdatingThreads) {
     this.numTopics = numTopics;
     this.alpha = alpha;
     this.eta = eta;
@@ -90,6 +103,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     for(int t=0; t<terms.length; t++) {
       termIdMap.put(terms[t], t);
     }
+    this.numTrainingThreads = numTrainingThreads;
+    this.numUpdatingThreads = numUpdatingThreads;
     postInitCorpus();
     initializeModel();
   }
@@ -170,7 +185,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   }
 
   private void initializeModel() {
-    topicModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(1234), terms);
+    topicModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(1234), terms, numUpdatingThreads);
+    updatedModel = new TopicModel(numTopics, numTerms, eta, alpha, null, terms, numUpdatingThreads);
     docTopicCounts = new DenseMatrix(numDocuments, numTopics);
     docTopicCounts.assign(1/numTopics);
   }
@@ -184,13 +200,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     if(document == null) {
       return;
     }
-    Matrix tempDocModel = new SparseRowMatrix(new int[]{numTopics, numTerms}, true);
-    tempDocModel.assign(0);
-    // first learn the document/topic distribution for one iteration
-    topicModel.trainDocTopicModel(document, docTopicCounts.getRow(docId), tempDocModel);
-    if(updateModel) {
-      topicModel.update(tempDocModel);
-    }
+    threadPool.submit(new Trainer(topicModel, updateModel ? updatedModel : null, document,
+        docTopicCounts.getRow(docId), new SparseRowMatrix(new int[]{numTopics, numTerms}, true)));
   }
 
   private void inferDocuments(double convergence, int maxIter, boolean recalculate) {
@@ -202,8 +213,15 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   public void trainDocuments() {
     long start = System.nanoTime();
+    threadPool = Executors.newFixedThreadPool(numTrainingThreads);
     for(int docId = 0; docId < numDocuments; docId++) {
       trainDocument(docId);
+    }
+    threadPool.shutdown();
+    try {
+      threadPool.awaitTermination(60, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      // 
     }
     logTime("train documents", System.nanoTime() - start);
   }
@@ -231,10 +249,13 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     return error / totalCorpusWeight;
   }
 
-
   public double iterate() {
     trainDocuments();
-    topicModel.renormalize();
+    updatedModel.awaitTermination();
+    TopicModel tmp = topicModel;
+    topicModel = updatedModel;
+    updatedModel = tmp;
+    updatedModel.reset();
     double error = error();
     System.out.println(error + " = error");
     return error;
@@ -266,106 +287,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     }
     return newError;
   }
-/*
-  public void writeTopicModel(int numTerms, Path outputPath) {
-    Map<Integer, Map<String, Double>> pTopicTerm = Maps.newHashMap();
-    for(int term = 0; term < topicTermCounts.length; term++) {
-      double[] topicWordCount = topicTermCounts[term].clone(); // count of topic assignments for this term
-      for(int x=0; x<numTopics; x++) {
-        topicWordCount[x] /= topicCounts[x]; // c(x, t) / c(x) = % of topic x which is t.
-        if(!pTopicTerm.containsKey(x)) {
-          pTopicTerm.put(x, Maps.<String, Double>newHashMap());
-        }
-        if(!pTopicTerm.get(x).containsKey(terms[term])) {
-          pTopicTerm.get(x).put(terms[term], 0d);
-        }
-        // p(x, t) += topicWordCount(x)
-        pTopicTerm.get(x).put(terms[term], pTopicTerm.get(x).get(terms[term]) + topicWordCount[x]);
-      }
-    }
-    Map<Integer, List<Pair<String, Double>>> topTopicTerms = Maps.newHashMap();
-    try {
-      FileSystem fs = FileSystem.get(getConf());
-      if(fs.exists(outputPath) && !fs.getFileStatus(outputPath).isDir()) {
-        fs.delete(outputPath, true);
-      }
-      if(!fs.exists(outputPath)) {
-        fs.mkdirs(outputPath);
-      }
-    } catch (IOException e) {
-      throw new RuntimeException(e); // TODO cleanup
-    }
-    for(int x=0; x<numTopics; x++) {
-      List<Pair<String,Double>> topTerms = Lists.newArrayList();
-      for(Map.Entry<String,Double> topicTermEntry : pTopicTerm.get(x).entrySet()) {
-        topTerms.add(new Pair<String, Double>(topicTermEntry.getKey(), topicTermEntry.getValue()));
-      }
-      Collections.sort(topTerms, new Comparator<Pair<String, Double>>() {
-        @Override public int compare(Pair<String, Double> a, Pair<String, Double> b) {
-          return Double.compare(b.getSecond(), a.getSecond());
-        }
-      });
-      log.info("Writing topic (" + x + ") to " + outputPath);
-      SequenceFile.Writer writer = null;
-      try {
-        writer = new SequenceFile.Writer(FileSystem.get(getConf()), getConf(),
-            new Path(outputPath, "" + x), Text.class, DoubleWritable.class);
-        Text text = new Text();
-        DoubleWritable value = new DoubleWritable();
-        for(int i=0; i<numTerms && i<topTerms.size(); i++) {
-          Pair<String, Double> pair = topTerms.get(i);
-          text.set(pair.getFirst());
-          value.set(pair.getSecond());
-          writer.append(text, value);
-        }
-      } catch (IOException ioe) {
-        
-      } finally {
-        if(writer != null) {
-          try {
-            writer.close();
-          } catch (IOException e) {
-            // ignore
-          }
-        }
-      }
-    }
-  }
 
-  private void writeDocTopics(Path outputPath) {
-    SequenceFile.Writer writer = null;
-    try {
-      FileSystem fs = FileSystem.get(getConf());
-      if(fs.exists(outputPath)) {
-        fs.delete(outputPath, true);
-      }
-      IntWritable key = new IntWritable();
-      VectorWritable value = new VectorWritable();
-      writer = new SequenceFile.Writer(fs, getConf(), outputPath,
-          IntWritable.class, VectorWritable.class);
-      for(int docId = 0; docId < docTopicCounts.length; docId++) {
-        Vector topicVector = new DenseVector(docTopicCounts[docId], true);
-        double norm = topicVector.zSum();
-        if(norm > 0) {
-          topicVector.assign(Functions.mult(1/norm));
-        }
-        key.set(docId);
-        value.set(topicVector);
-        writer.append(key, value);
-      }
-    } catch (IOException e) {
-      throw new RuntimeException(e); // TODO
-    } finally {
-      if(writer != null) {
-        try {
-          writer.close();
-        } catch (IOException e) {
-          // ignore
-        }
-      }
-    }
-  }
-*/
   private static final void logTime(String label, long nanos) {
     System.out.println(label + " time: " + (double)(nanos)/1e6 + "ms");
   }
@@ -583,5 +505,29 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new InMemoryCollapsedVariationalBayes0(), args);
+  }
+
+  private static final class Trainer implements Runnable {
+    private final TopicModel readModel;
+    private final TopicModel writeModel;
+    private final Vector document;
+    private final Vector docTopics;
+    private final Matrix docTopicModel;
+
+    public Trainer(TopicModel readModel, TopicModel writeModel, Vector document,
+        Vector docTopics, Matrix docTopicModel) {
+      this.readModel = readModel;
+      this.writeModel = writeModel;
+      this.document = document;
+      this.docTopics = docTopics;
+      this.docTopicModel = docTopicModel;
+    }
+
+    @Override public void run() {
+      readModel.trainDocTopicModel(document, docTopics, docTopicModel);
+      if(writeModel != null) {
+        writeModel.update(docTopicModel);
+      }
+    }
   }
 }

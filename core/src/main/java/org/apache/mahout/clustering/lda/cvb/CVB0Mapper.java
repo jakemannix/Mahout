@@ -1,12 +1,10 @@
 package org.apache.mahout.clustering.lda.cvb;
 
-import com.google.common.collect.Maps;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.mahout.common.Pair;
+import org.apache.mahout.math.DenseVector;
 
 import java.io.IOException;
-import java.util.EnumMap;
 import java.util.Random;
 
 public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
@@ -29,8 +27,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
   private CVBKey outputKey = new CVBKey();
   private CVBTuple outputValue = new CVBTuple();
   private double[] topicSum;
-  private EnumMap<AggregationBranch, Pair<CVBKey, CVBTuple>> mapsideCombinerCache =
-      Maps.newEnumMap(AggregationBranch.class);
+  private TopicModel modelCache;
   protected CVBInference inference;
 
   @Override
@@ -50,9 +47,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     testSetFraction = conf.getFloat(TEST_SET_PCT, 0f);
     topicSumPartitioningFactor = conf.getInt(TOPIC_SUM_PARTITIONING_FACTOR, 10);
     inference = new CVBInference(eta, alpha, numTerms);
-    for(AggregationBranch branch : AggregationBranch.values()) {
-      mapsideCombinerCache.put(branch, Pair.of(new CVBKey(), new CVBTuple()));
-    }
+    modelCache = new TopicModel(numTopics, numTerms, eta, alpha, null);
   }
 
   private int currentTermId;
@@ -85,14 +80,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     currentDocId = docId;
     currentCount = itemCount;
 
-    // emit (a, -1, T) : { (-, -, -), [t_aix], -, - }
-    emitExpectedCountsForAggregating(termId, -1, d, ctx);
-    // emit (-1, i, T) : { (-, -, -), -, [t_aix], - }
-    emitExpectedCountsForAggregating(-1, docId, d, ctx);
-    // aggregate topicSum
-    for(int x = 0; x < numTopics; x++) {
-      topicSum[x] += d[x];
-    }
+    modelCache.update(termId, new DenseVector(d, true));
 
     // prepare the output tuple
     outputValue.setTermId(termId);
@@ -133,6 +121,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
       outputKey.setDocId(-(1 + partition));
       context.write(outputKey, outputValue);
     }
+    // need to emit the model: (-1, termId) for all terms, and (docId, -1) for all docs.
   }
 
   private void initializeCounts(CVBKey key, CVBTuple tuple) {
