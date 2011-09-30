@@ -1,13 +1,23 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import com.google.common.collect.Lists;
+import org.apache.hadoop.conf.Configurable;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
 import org.apache.mahout.common.Pair;
+import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterable;
 import org.apache.mahout.math.DenseVector;
+import org.apache.mahout.math.DistributedRowMatrixWriter;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
+import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.function.Functions;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -19,7 +29,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-public class TopicModel {
+public class TopicModel implements Configurable {
   private final String[] dictionary;
   private final Matrix topicTermCounts;
   private final Vector topicSums;
@@ -28,6 +38,8 @@ public class TopicModel {
   private final double eta;
   private final double alpha;
 
+  private Configuration conf;
+
   private Sampler sampler;
   private ExecutorService threadPool = new ThreadPoolExecutor(32, 32, Integer.MAX_VALUE,
       TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(100));
@@ -35,6 +47,11 @@ public class TopicModel {
 
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary) {
     this(numTopics, numTerms, eta, alpha, null, dictionary, 1);
+  }
+
+  public TopicModel(Path modelPath, Configuration conf, double eta, double alpha,
+      String[] dictionary, int numThreads) throws IOException {
+    this(loadModel(modelPath, conf), eta, alpha, dictionary, numThreads);
   }
 
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, Random random,
@@ -83,6 +100,27 @@ public class TopicModel {
       topicSums.set(x, random == null ? 1d : topicTermCounts.getRow(x).norm(1));
     }
     return Pair.of(topicTermCounts, topicSums);
+  }
+
+  public static Pair<Matrix, Vector> loadModel(Path modelPath, Configuration conf)
+      throws IOException {
+    List<Pair<Integer, Vector>> rows = Lists.newArrayList();
+    for(Pair<IntWritable, VectorWritable> row :
+        new SequenceFileIterable<IntWritable, VectorWritable>(modelPath, true, conf)) {
+      rows.add(Pair.of(row.getFirst().get(), row.getSecond().get()));
+    }
+    if(rows.isEmpty()) {
+      throw new IOException(modelPath + " has no vectors in it");
+    }
+    Vector[] v = new Vector[rows.size()];
+    Vector topicSums = new DenseVector(v.length);
+    for(Pair<Integer, Vector> pair : rows) {
+      v[pair.getFirst()] = pair.getSecond();
+      topicSums.set(pair.getFirst(), pair.getSecond().norm(1));
+    }
+    Matrix model = new SparseRowMatrix(new int[]{v.length, v[0].size()},
+        v, true, v[0] instanceof SequentialAccessSparseVector);
+    return Pair.of(model, topicSums);
   }
 
   public String toString() {
@@ -180,6 +218,14 @@ public class TopicModel {
     topicCounts.addTo(topicSums);
   }
 
+  public void persist(Path outputDir, boolean overwrite) throws IOException {
+    FileSystem fs = outputDir.getFileSystem(conf);
+    if(overwrite) {
+      fs.delete(outputDir, true); // CHECK second arg
+    }
+    DistributedRowMatrixWriter.write(outputDir, conf, topicTermCounts);
+  }
+
   /**
    *
    * @param docTopics d[x] is the overall weight of topic_x in this document.
@@ -244,6 +290,16 @@ public class TopicModel {
       bldr.setCharAt(bldr.length() - 1, '}');
     }
     return bldr.toString();
+  }
+
+  @Override
+  public void setConf(Configuration configuration) {
+    this.conf = configuration;
+  }
+
+  @Override
+  public Configuration getConf() {
+    return conf;
   }
 
   private final class Updater implements Runnable {

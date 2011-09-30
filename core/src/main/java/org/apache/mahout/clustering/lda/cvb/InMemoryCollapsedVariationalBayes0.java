@@ -23,6 +23,7 @@ import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterable;
 import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.DistributedRowMatrixWriter;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
@@ -185,8 +186,11 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   }
 
   private void initializeModel() {
-    topicModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(1234), terms, numUpdatingThreads);
+    topicModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(1234), terms,
+        numUpdatingThreads);
+    topicModel.setConf(getConf());
     updatedModel = new TopicModel(numTopics, numTerms, eta, alpha, null, terms, numUpdatingThreads);
+    updatedModel.setConf(getConf());
     docTopicCounts = new DenseMatrix(numDocuments, numTopics);
     docTopicCounts.assign(1/numTopics);
   }
@@ -286,6 +290,10 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
           maxIterations, fractionalChange, newError));
     }
     return newError;
+  }
+
+  public void writeModel(Path outputPath) throws IOException {
+    topicModel.persist(outputPath, true);
   }
 
   private static final void logTime(String label, long nanos) {
@@ -430,8 +438,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       }
 
       start = System.nanoTime();
-  //    cvb0.writeTopicModel(numTermsToPrint, new Path(topicOutFile));
-  //    cvb0.writeDocTopics(new Path(docOutFile));
+      cvb0.writeModel(new Path(topicOutFile));
+      DistributedRowMatrixWriter.write(new Path(docOutFile), conf, cvb0.docTopicCounts);
       logTime("printTopics", System.nanoTime() - start);
     } catch (OptionException e) {
       log.error("Error while parsing options", e);
