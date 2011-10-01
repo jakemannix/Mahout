@@ -341,11 +341,24 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         .withDescription("re-infer p(topic | doc) : [no | randstart | continue]")
         .withShortName("rdt").create();
 
+    Option numTrainThreadsOpt = obuilder.withLongName("numTrainThreads").withRequired(false)
+        .withArgument(abuilder.withName("numTrainThreads").withMinimum(1).withMaximum(1)
+        .withDefault("1").create())
+        .withDescription("number of threads to train with")
+        .withShortName("ntt").create();
+
+    Option numUpdateThreadsOpt = obuilder.withLongName("numUpdateThreads").withRequired(false)
+        .withArgument(abuilder.withName("numUpdateThreads").withMinimum(1).withMaximum(1)
+        .withDefault("1").create())
+        .withDescription("number of threads to update the model with")
+        .withShortName("nut").create();
+
     Group group = gbuilder.withName("Options").withOption(inputDirOpt).withOption(numTopicsOpt)
         .withOption(numTermsToPrintOpt).withOption(alphaOpt).withOption(etaOpt)
         .withOption(maxIterOpt).withOption(burnInOpt).withOption(convergenceOpt)
         .withOption(minDfCtOpt).withOption(maxDfPctOpt).withOption(dictOpt).withOption(reInferDocTopicsOpt)
-        .withOption(outputDocFileOpt).withOption(outputTopicFileOpt).withOption(dfsOpt).create();
+        .withOption(outputDocFileOpt).withOption(outputTopicFileOpt).withOption(dfsOpt)
+        .withOption(numTrainThreadsOpt).withOption(numUpdateThreadsOpt).create();
 
     try {
       Parser parser = new Parser();
@@ -369,6 +382,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       double minFractionalErrorChange = Double.parseDouble((String) cmdLine.getValue(convergenceOpt));
       int minDfCt = Integer.parseInt((String)cmdLine.getValue(minDfCtOpt));
       double maxDfPct = Float.parseFloat((String)cmdLine.getValue(maxDfPctOpt));
+      int numTrainThreads = Integer.parseInt((String)cmdLine.getValue(numTrainThreadsOpt));
+      int numUpdateThreads = Integer.parseInt((String)cmdLine.getValue(numUpdateThreadsOpt));
       String topicOutFile = (String)cmdLine.getValue(outputTopicFileOpt);
       String docOutFile = (String)cmdLine.getValue(outputDocFileOpt);
       String reInferDocTopics = (String)cmdLine.getValue(reInferDocTopicsOpt);
@@ -392,7 +407,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         Matrix corpus = loadVectors(inputDirString, conf);
         logTime("vector seqfile corpus loading", System.nanoTime() - start);
         start = System.nanoTime();
-        cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta);
+        cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta,
+            numTrainThreads, numUpdateThreads);
         logTime("cvb0 init", System.nanoTime() - start);
       }
       start = System.nanoTime();
