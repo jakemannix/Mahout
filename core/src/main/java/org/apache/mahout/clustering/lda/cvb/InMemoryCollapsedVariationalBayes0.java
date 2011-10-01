@@ -37,9 +37,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private static final Logger log = LoggerFactory.getLogger(InMemoryCollapsedVariationalBayes0.class);
@@ -55,7 +52,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private Map<String, Integer> termIdMap;
   private String[] terms;  // of length numTerms;
 
-  private Vector[] corpusWeights; // length numDocs;
+  private Matrix corpusWeights; // length numDocs;
   private double totalCorpusWeight;
 
   private Matrix docTopicCounts;
@@ -66,7 +63,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private int numTrainingThreads;
   private int numUpdatingThreads;
 
-  private ExecutorService threadPool;
+  private ModelTrainer modelTrainer;
 
   private InMemoryCollapsedVariationalBayes0() {
     // only for main usage
@@ -84,12 +81,12 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   }
 
 
-  public InMemoryCollapsedVariationalBayes0(Vector[] corpus, String[] terms, int numTopics,
+  public InMemoryCollapsedVariationalBayes0(Matrix corpus, String[] terms, int numTopics,
       double alpha, double eta) {
     this(corpus, terms, numTopics, alpha, eta, 1, 1);
   }
 
-  public InMemoryCollapsedVariationalBayes0(Vector[] corpus, String[] terms, int numTopics,
+  public InMemoryCollapsedVariationalBayes0(Matrix corpus, String[] terms, int numTopics,
       double alpha, double eta, int numTrainingThreads, int numUpdatingThreads) {
     this.numTopics = numTopics;
     this.alpha = alpha;
@@ -97,7 +94,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     this.minDfCt = 0;
     this.maxDfPct = 1.0f;
     corpusWeights = corpus;
-    numDocuments = corpus.length;
+    numDocuments = corpus.numRows();
     this.terms = terms;
     numTerms = terms.length;
     termIdMap = Maps.newHashMap();
@@ -114,7 +111,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     totalCorpusWeight = 0;
     int numNonZero = 0;
     for(int i=0; i<numDocuments; i++) {
-      Vector v = corpusWeights[i];
+      Vector v = corpusWeights.getRow(i);
       double norm;
       if(v != null && (norm = v.norm(1)) != 0) {
         numNonZero += v.getNumNondefaultElements();
@@ -122,7 +119,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       }
     }
     String s = "Initializing corpus with %d docs, %d terms, %d nonzero entries, total termWeight %f";
-    System.out.println(String.format(s, numDocuments, numTerms, numNonZero, totalCorpusWeight));
+    log.info(String.format(s, numDocuments, numTerms, numNonZero, totalCorpusWeight));
   }
 
   private void initializeCorpusWeights(Map<Integer, Map<String, Integer>> corpus) {
@@ -139,7 +136,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     for(int t=0; t<terms.length; t++) {
       termIdMap.put(terms[t], t);
     }
-    corpusWeights = new Vector[numDocuments];
+    corpusWeights = new SparseRowMatrix(new int[]{numDocuments, numTerms}, true);
     for(int i=0; i<numDocuments; i++) {
       Map<String, Integer> document = corpus.get(i);
       Vector docVector = new RandomAccessSparseVector(numTerms, document.size());
@@ -151,7 +148,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       }
       double norm = docVector.getNumNondefaultElements();
       if(norm > 0) {
-        corpusWeights[i] = docVector;
+        corpusWeights.assignRow(i, docVector);
       } else {
         log.warn("Empty document vector at docId( " + i + ")");
       }
@@ -176,7 +173,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       // trim out terms which are too frequent (dfPct > maxDfPct) or too rare (dfCt < minDfCt)
       float df = (float)e.getValue();
       if(df/numDocuments > maxDfPct) {
-        System.out.println(e.getKey() + " occurs " + df + " times, removing");
+        log.info(e.getKey() + " occurs " + df + " times, removing");
         it.remove();
       } else if(df < minDfCt) {
         it.remove();
@@ -193,50 +190,30 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     updatedModel.setConf(getConf());
     docTopicCounts = new DenseMatrix(numDocuments, numTopics);
     docTopicCounts.assign(1/numTopics);
-  }
-
-  private void trainDocument(int docId) {
-    trainDocument(docId, true);
-  }
-
-  private void trainDocument(int docId, boolean updateModel) {
-    Vector document = corpusWeights[docId];
-    if(document == null) {
-      return;
-    }
-    threadPool.submit(new Trainer(topicModel, updateModel ? updatedModel : null, document,
-        docTopicCounts.getRow(docId), new SparseRowMatrix(new int[]{numTopics, numTerms}, true)));
+    modelTrainer = new ModelTrainer(topicModel, updatedModel, numTrainingThreads, numTopics, numTerms);
   }
 
   private void inferDocuments(double convergence, int maxIter, boolean recalculate) {
-    for(int docId = 0; docId < corpusWeights.length; docId++) {
-      Vector inferredDocument = topicModel.infer(corpusWeights[docId], docTopicCounts.getRow(docId));
+    for(int docId = 0; docId < corpusWeights.numRows() ; docId++) {
+      Vector inferredDocument = topicModel.infer(corpusWeights.getRow(docId),
+          docTopicCounts.getRow(docId));
       // do what now?
     }
   }
 
   public void trainDocuments() {
     long start = System.nanoTime();
-    threadPool = Executors.newFixedThreadPool(numTrainingThreads);
-    for(int docId = 0; docId < numDocuments; docId++) {
-      trainDocument(docId);
-    }
-    threadPool.shutdown();
-    try {
-      threadPool.awaitTermination(60, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      // 
-    }
+    modelTrainer.train(corpusWeights, docTopicCounts);
     logTime("train documents", System.nanoTime() - start);
   }
 
   private double error(int docId) {
-    Vector docTermCounts = corpusWeights[docId];
+    Vector docTermCounts = corpusWeights.getRow(docId);
     if(docTermCounts == null) {
       return 0;
     } else {
       Vector expectedDocTermCounts =
-          topicModel.infer(corpusWeights[docId], docTopicCounts.getRow(docId));
+          topicModel.infer(corpusWeights.getRow(docId), docTopicCounts.getRow(docId));
       double expectedNorm = expectedDocTermCounts.norm(1);
       return expectedDocTermCounts.times(docTermCounts.norm(1)/expectedNorm)
           .minus(docTermCounts).norm(1);
@@ -253,51 +230,42 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     return error / totalCorpusWeight;
   }
 
-  public double iterate() {
-    trainDocuments();
-    updatedModel.awaitTermination();
-    TopicModel tmp = topicModel;
-    topicModel = updatedModel;
-    updatedModel = tmp;
-    updatedModel.reset();
-    double error = error();
-    System.out.println(error + " = error");
-    return error;
-  }
-
   public double iterateUntilConvergence(double minFractionalErrorChange, int maxIterations, int minIter) {
     double fractionalChange = Double.MAX_VALUE;
     int iter = 0;
     double oldError = 0;
     while(iter < minIter) {
-      oldError = iterate();
-      System.out.println(topicModel.toString());
+      trainDocuments();
+      oldError = error();
+      log.info(oldError + " = error");
+      log.info(modelTrainer.getReadModel().toString());
       iter++;
     }
     double newError = 0;
     while(iter < maxIterations && fractionalChange > minFractionalErrorChange) {
-      newError = iterate();
+      trainDocuments();
+      newError = error();
       iter++;
       fractionalChange = Math.abs(newError - oldError) / oldError;
-      System.out.println(fractionalChange + " = fractionalChange");
+      log.info(fractionalChange + " = fractionalChange");
       oldError = newError;
     }
     if(iter < maxIterations) {
-      System.out.println(String.format("Converged! fractional error change: %f, error %f",
+      log.info(String.format("Converged! fractional error change: %f, error %f",
           fractionalChange, newError));
     } else {
-      System.out.println(String.format("Reached max iteration count (%d), fractional error change: %f, error: %f",
+      log.info(String.format("Reached max iteration count (%d), fractional error change: %f, error: %f",
           maxIterations, fractionalChange, newError));
     }
     return newError;
   }
 
   public void writeModel(Path outputPath) throws IOException {
-    topicModel.persist(outputPath, true);
+    modelTrainer.persist(outputPath);
   }
 
   private static final void logTime(String label, long nanos) {
-    System.out.println(label + " time: " + (double)(nanos)/1e6 + "ms");
+    log.info(label + " time: " + (double)(nanos)/1e6 + "ms");
   }
 
   public static int main2(String[] args, Configuration conf) throws Exception {
@@ -421,7 +389,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         String[] terms = loadDictionary(dictDirString, conf);
         logTime("dictionary loading", System.nanoTime() - start);
         start = System.nanoTime();
-        Vector[] corpus = loadVectors(inputDirString, conf);
+        Matrix corpus = loadVectors(inputDirString, conf);
         logTime("vector seqfile corpus loading", System.nanoTime() - start);
         start = System.nanoTime();
         cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta);
@@ -496,7 +464,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     return super.getConf();
   }
 
-  private static Vector[] loadVectors(String vectorPathString, Configuration conf)
+  private static Matrix loadVectors(String vectorPathString, Configuration conf)
     throws IOException {
     Path vectorPath = new Path(vectorPathString);
     List<Vector> vectorList = Lists.newArrayList();
@@ -504,7 +472,11 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         : new SequenceFileIterable<IntWritable, VectorWritable>(vectorPath, true, conf)) {
       vectorList.add(record.getSecond().get());
     }
-    return vectorList.toArray(new Vector[vectorList.size()]);
+    int numRows = vectorList.size();
+    int numCols = vectorList.get(0).size();
+    return new SparseRowMatrix(new int[] {numRows, numCols},
+        vectorList.toArray(new Vector[vectorList.size()]), true,
+        vectorList.get(0).isSequentialAccess());
   }
 
   @Override public int run(String[] strings) throws Exception {
@@ -513,29 +485,5 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new InMemoryCollapsedVariationalBayes0(), args);
-  }
-
-  private static final class Trainer implements Runnable {
-    private final TopicModel readModel;
-    private final TopicModel writeModel;
-    private final Vector document;
-    private final Vector docTopics;
-    private final Matrix docTopicModel;
-
-    public Trainer(TopicModel readModel, TopicModel writeModel, Vector document,
-        Vector docTopics, Matrix docTopicModel) {
-      this.readModel = readModel;
-      this.writeModel = writeModel;
-      this.document = document;
-      this.docTopics = docTopics;
-      this.docTopicModel = docTopicModel;
-    }
-
-    @Override public void run() {
-      readModel.trainDocTopicModel(document, docTopics, docTopicModel);
-      if(writeModel != null) {
-        writeModel.update(docTopicModel);
-      }
-    }
   }
 }
