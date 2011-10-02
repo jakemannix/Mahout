@@ -17,12 +17,6 @@
 
 package org.apache.mahout.classifier.bayes;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Set;
-
 import org.apache.commons.cli2.CommandLine;
 import org.apache.commons.cli2.Group;
 import org.apache.commons.cli2.Option;
@@ -43,10 +37,16 @@ import org.apache.hadoop.util.GenericsUtil;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.mahout.analysis.WikipediaAnalyzer;
 import org.apache.mahout.common.CommandLineUtil;
-import org.apache.mahout.common.iterator.FileLineIterable;
 import org.apache.mahout.common.HadoopUtil;
+import org.apache.mahout.common.iterator.FileLineIterable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Create and run the Wikipedia Dataset Creator.
@@ -184,6 +184,7 @@ public final class WikipediaDatasetCreatorDriver {
     job.setOutputValueClass(Text.class);
     job.setMapperClass(WikipediaDatasetCreatorMapper.class);
     //TODO: job.setNumMapTasks(100);
+    job.setNumReduceTasks(25);
     job.setInputFormatClass(XmlInputFormat.class);
     job.setReducerClass(WikipediaDatasetCreatorReducer.class);
     job.setOutputFormatClass(TextOutputFormat.class);

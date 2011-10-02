@@ -39,20 +39,25 @@ public class ModelTrainer {
   }
 
   public void train(VectorIterable matrix, VectorIterable docTopicCounts) {
+    train(matrix, docTopicCounts, 1);
+  }
+
+  public void train(VectorIterable matrix, VectorIterable docTopicCounts, int numDocTopicIters) {
     start();
     Iterator<MatrixSlice> docIterator = matrix.iterator();
     Iterator<MatrixSlice> docTopicIterator = docTopicCounts.iterator();
     while(docIterator.hasNext() && docTopicIterator.hasNext()) {
       Vector document = docIterator.next().vector();
       Vector topicDist = docTopicIterator.next().vector();
-      train(document, topicDist, true);
+      train(document, topicDist, true, numDocTopicIters);
     }
     stop();
   }
 
-  public void train(Vector document, Vector docTopicCounts, boolean update) {
+  public void train(Vector document, Vector docTopicCounts, boolean update, int numDocTopicIters) {
     threadPool.submit(new TrainerRunnable(readModel, update ? writeModel : null, document,
-        docTopicCounts, new SparseRowMatrix(new int[]{numTopics, numTerms}, true)));
+        docTopicCounts, new SparseRowMatrix(new int[]{numTopics, numTerms}, true),
+        numDocTopicIters));
   }
 
   public void stop() {
@@ -79,18 +84,22 @@ public class ModelTrainer {
     private final Vector document;
     private final Vector docTopics;
     private final Matrix docTopicModel;
+    private final int numDocTopicIters;
 
     public TrainerRunnable(TopicModel readModel, TopicModel writeModel, Vector document,
-        Vector docTopics, Matrix docTopicModel) {
+        Vector docTopics, Matrix docTopicModel, int numDocTopicIters) {
       this.readModel = readModel;
       this.writeModel = writeModel;
       this.document = document;
       this.docTopics = docTopics;
       this.docTopicModel = docTopicModel;
+      this.numDocTopicIters = numDocTopicIters;
     }
 
     @Override public void run() {
-      readModel.trainDocTopicModel(document, docTopics, docTopicModel);
+      for(int i = 0; i < numDocTopicIters; i++) {
+        readModel.trainDocTopicModel(document, docTopics, docTopicModel);
+      }
       if(writeModel != null) {
         writeModel.update(docTopicModel);
       }

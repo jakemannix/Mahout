@@ -13,6 +13,8 @@ import org.apache.commons.cli2.builder.DefaultOptionBuilder;
 import org.apache.commons.cli2.builder.GroupBuilder;
 import org.apache.commons.cli2.commandline.Parser;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Writable;
@@ -236,7 +238,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     double oldError = 0;
     while(iter < minIter) {
       trainDocuments();
-      oldError = error();
+      oldError = 0; //error();
       log.info(oldError + " = error");
       log.info(modelTrainer.getReadModel().toString());
       iter++;
@@ -483,10 +485,21 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private static Matrix loadVectors(String vectorPathString, Configuration conf)
     throws IOException {
     Path vectorPath = new Path(vectorPathString);
+    FileSystem fs = vectorPath.getFileSystem(conf);
+    List<Path> subPaths = Lists.newArrayList();
+    if(fs.isFile(vectorPath)) {
+      subPaths.add(vectorPath);
+    } else {
+      for(FileStatus fileStatus : fs.listStatus(vectorPath)) {
+        subPaths.add(fileStatus.getPath());
+      }
+    }
     List<Vector> vectorList = Lists.newArrayList();
-    for(Pair<IntWritable, VectorWritable> record
-        : new SequenceFileIterable<IntWritable, VectorWritable>(vectorPath, true, conf)) {
-      vectorList.add(record.getSecond().get());
+    for(Path subPath : subPaths) {
+      for(Pair<IntWritable, VectorWritable> record
+          : new SequenceFileIterable<IntWritable, VectorWritable>(subPath, true, conf)) {
+        vectorList.add(record.getSecond().get());
+      }
     }
     int numRows = vectorList.size();
     int numCols = vectorList.get(0).size();
