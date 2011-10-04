@@ -50,6 +50,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   private double eta;
   private int minDfCt;
   private double maxDfPct;
+  private boolean verbose = false;
 
   private Map<String, Integer> termIdMap;
   private String[] terms;  // of length numTerms;
@@ -82,6 +83,9 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     initializeModel();
   }
 
+  public void setVerbose(boolean verbose) {
+    this.verbose = verbose;
+  }
 
   public InMemoryCollapsedVariationalBayes0(Matrix corpus, String[] terms, int numTopics,
       double alpha, double eta) {
@@ -237,15 +241,19 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     int iter = 0;
     double oldError = 0;
     while(iter < minIter) {
+      if(verbose) {
+        log.info(modelTrainer.getReadModel().toString());
+      }
       trainDocuments();
+      log.info("iteration " + iter + " complete");
       oldError = 0; //error();
       log.info(oldError + " = error");
-      log.info(modelTrainer.getReadModel().toString());
       iter++;
     }
     double newError = 0;
     while(iter < maxIterations && fractionalChange > minFractionalErrorChange) {
       trainDocuments();
+      log.info("iteration " + iter + " complete");
       newError = error();
       iter++;
       fractionalChange = Math.abs(newError - oldError) / oldError;
@@ -355,12 +363,20 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         .withDescription("number of threads to update the model with")
         .withShortName("nut").create();
 
+    Option verboseOpt = obuilder.withLongName("verbose").withRequired(false)
+        .withArgument(abuilder.withName("verbose").withMinimum(1).withMaximum(1)
+        .withDefault("false").create())
+        .withDescription("print verbose information, like top-terms in each topic, during iteration")
+        .withShortName("v").create();
+
+
     Group group = gbuilder.withName("Options").withOption(inputDirOpt).withOption(numTopicsOpt)
         .withOption(numTermsToPrintOpt).withOption(alphaOpt).withOption(etaOpt)
         .withOption(maxIterOpt).withOption(burnInOpt).withOption(convergenceOpt)
         .withOption(minDfCtOpt).withOption(maxDfPctOpt).withOption(dictOpt).withOption(reInferDocTopicsOpt)
         .withOption(outputDocFileOpt).withOption(outputTopicFileOpt).withOption(dfsOpt)
-        .withOption(numTrainThreadsOpt).withOption(numUpdateThreadsOpt).create();
+        .withOption(numTrainThreadsOpt).withOption(numUpdateThreadsOpt)
+        .withOption(verboseOpt).create();
 
     try {
       Parser parser = new Parser();
@@ -389,6 +405,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       String topicOutFile = (String)cmdLine.getValue(outputTopicFileOpt);
       String docOutFile = (String)cmdLine.getValue(outputDocFileOpt);
       String reInferDocTopics = (String)cmdLine.getValue(reInferDocTopicsOpt);
+      boolean verbose = Boolean.parseBoolean((String) cmdLine.getValue(verboseOpt));
 
       long start = System.nanoTime();
       InMemoryCollapsedVariationalBayes0 cvb0 = null;
@@ -414,6 +431,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         logTime("cvb0 init", System.nanoTime() - start);
       }
       start = System.nanoTime();
+      cvb0.setVerbose(verbose);
       double error = cvb0.iterateUntilConvergence(minFractionalErrorChange, maxIterations, burnInIterations);
       logTime("total training time", System.nanoTime() - start);
 

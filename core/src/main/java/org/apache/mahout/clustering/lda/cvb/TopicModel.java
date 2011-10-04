@@ -16,6 +16,8 @@ import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.function.Functions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -25,11 +27,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class TopicModel implements Configurable {
+  private static final Logger log = LoggerFactory.getLogger(TopicModel.class);
   private final String[] dictionary;
   private final Matrix topicTermCounts;
   private final Vector topicSums;
@@ -41,7 +43,8 @@ public class TopicModel implements Configurable {
   private Configuration conf;
 
   private Sampler sampler;
-  private ExecutorService threadPool = new ThreadPoolExecutor(32, 32, Integer.MAX_VALUE,
+  private final int numThreads;
+  private ThreadPoolExecutor threadPool = new ThreadPoolExecutor(32, 32, Integer.MAX_VALUE,
       TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(100));
   private Updater[] updaters;
 
@@ -79,11 +82,20 @@ public class TopicModel implements Configurable {
     this.eta = eta;
     this.alpha = alpha;
     this.sampler = new Sampler(new Random(1234));
+    this.numThreads = numThreads;
+    initializeThreadPool();
+  }
+
+  private void initializeThreadPool() {
+    threadPool = new ThreadPoolExecutor(numThreads, numThreads, 0, TimeUnit.SECONDS,
+        new ArrayBlockingQueue<Runnable>(numThreads));
+    threadPool.allowCoreThreadTimeOut(false);
     updaters = new Updater[numThreads];
     for(int i = 0; i < numThreads; i++) {
       updaters[i] = new Updater();
       threadPool.submit(updaters[i]);
     }
+
   }
 
   private static Pair<Matrix,Vector> randomMatrix(int numTopics, int numTerms, Random random) {
@@ -127,7 +139,7 @@ public class TopicModel implements Configurable {
     String buf = "";
     for(int x = 0; x < numTopics; x++) {
       String v = vectorToSortedString(topicTermCounts.getRow(x), dictionary);
-      buf += v.substring(0, Math.min(1000, v.length())) + "\n";
+      buf += v + "\n";
     }
     return buf;
   }
@@ -145,10 +157,7 @@ public class TopicModel implements Configurable {
       topicTermCounts.assignRow(x, new SequentialAccessSparseVector(numTerms));
     }
     topicSums.assign(1d);
-    for(int i = 0; i < updaters.length; i++) {
-      updaters[i] = new Updater();
-      threadPool.submit(updaters[i]);
-    }
+    initializeThreadPool();
   }
 
   public void awaitTermination() {
@@ -279,7 +288,9 @@ public class TopicModel implements Configurable {
     Iterator<Pair<String,Double>> listIt = vectorValues.iterator();
     StringBuilder bldr = new StringBuilder(2048);
     bldr.append("{");
-    while(listIt.hasNext()) {
+    int i = 0;
+    while(listIt.hasNext() && i < 25) {
+      i++;
       Pair<String,Double> p = listIt.next();
       bldr.append(p.getFirst());
       bldr.append(":");
@@ -317,20 +328,22 @@ public class TopicModel implements Configurable {
           }
         }
       } catch (InterruptedException e) {
-        // log!
+        log.warn("Interrupted waiting to shutdown() : ", e);
       }
     }
 
-    public void update(int topic, Vector v) {
+    public boolean update(int topic, Vector v) {
       if(shutdown) { // maybe don't do this?
         throw new IllegalStateException("In SHUTDOWN state: cannot submit tasks");
       }
       while(true) { // keep trying if interrupted
         try {
+          // start async operation by submitting to the queue
           queue.put(Pair.of(topic, v));
-          return;
+          // return once you got access to the queue
+          return true;
         } catch (InterruptedException e) {
-          // log!
+          log.warn("Interrupted trying to queue update:", e);
         }
       }
     }
@@ -343,7 +356,7 @@ public class TopicModel implements Configurable {
             updateTopic(pair.getFirst(), pair.getSecond());
           }
         } catch (InterruptedException e) {
-          // log!
+          log.warn("Interrupted waiting to poll for update", e);
         }
       }
       // in shutdown mode, finish remaining tasks!

@@ -6,19 +6,24 @@ import org.apache.mahout.math.MatrixSlice;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorIterable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Iterator;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class ModelTrainer {
+  private static final Logger log = LoggerFactory.getLogger(ModelTrainer.class);
   private int numTopics;
   private int numTerms;
   private TopicModel readModel;
   private TopicModel writeModel;
-  private ExecutorService threadPool;
+  private ThreadPoolExecutor threadPool;
+  private BlockingQueue<Runnable> workQueue;
   private int numTrainThreads;
 
   public ModelTrainer(TopicModel initialReadModel, TopicModel initialWriteModel,
@@ -35,7 +40,12 @@ public class ModelTrainer {
   }
 
   public void start() {
-    threadPool = Executors.newFixedThreadPool(numTrainThreads);
+    log.info("Starting training threadpool with " + numTrainThreads + " threads");
+    workQueue = new ArrayBlockingQueue<Runnable>(numTrainThreads);
+    threadPool = new ThreadPoolExecutor(numTrainThreads, numTrainThreads, 0, TimeUnit.SECONDS,
+        workQueue);
+    threadPool.allowCoreThreadTimeOut(false);
+    threadPool.prestartAllCoreThreads();
   }
 
   public void train(VectorIterable matrix, VectorIterable docTopicCounts) {
@@ -46,31 +56,54 @@ public class ModelTrainer {
     start();
     Iterator<MatrixSlice> docIterator = matrix.iterator();
     Iterator<MatrixSlice> docTopicIterator = docTopicCounts.iterator();
+    long startTime = System.nanoTime();
+    int i = 0;
     while(docIterator.hasNext() && docTopicIterator.hasNext()) {
+      i++;
       Vector document = docIterator.next().vector();
       Vector topicDist = docTopicIterator.next().vector();
       train(document, topicDist, true, numDocTopicIters);
+      if(i % 10000 == 0) {
+        long time = System.nanoTime() - startTime;
+        log.info("trained " + i + " documents in " + (time * 1d / 1e6) + "ms");
+      }
     }
     stop();
   }
 
   public void train(Vector document, Vector docTopicCounts, boolean update, int numDocTopicIters) {
-    threadPool.submit(new TrainerRunnable(readModel, update ? writeModel : null, document,
-        docTopicCounts, new SparseRowMatrix(new int[]{numTopics, numTerms}, true),
-        numDocTopicIters));
+    while(true) {
+      try {
+        workQueue.put(new TrainerRunnable(readModel,
+            update ? writeModel : null, document, docTopicCounts, new SparseRowMatrix(new int[]{
+            numTopics, numTerms}, true), numDocTopicIters));
+        return;
+      } catch (InterruptedException e) {
+        log.warn("Interrupted waiting to submit document to work queue: " + document, e);
+      }
+    }
   }
 
   public void stop() {
+    long startTime = System.nanoTime();
+    log.info("Initiating stopping of training threadpool");
     try {
       threadPool.shutdown();
-      threadPool.awaitTermination(60, TimeUnit.SECONDS);
+      if(!threadPool.awaitTermination(60, TimeUnit.SECONDS)) {
+        log.warn("Threadpool timed out on await termination - jobs still running!");
+      }
+      long newTime = System.nanoTime();
+      log.info("threadpool took: " + (newTime - startTime)*1d/1e6 + "ms");
+      startTime = newTime;
       writeModel.awaitTermination();
+      newTime = System.nanoTime();
+      log.info("writeModel.awaitTermination() took " + (newTime - startTime)*1d/1e6 + "ms");
       TopicModel tmpModel = writeModel;
       writeModel = readModel;
       readModel = tmpModel;
       writeModel.reset();
     } catch (InterruptedException e) {
-      //
+      log.error("Interrupted shutting down!", e);
     }
   }
 
@@ -98,9 +131,13 @@ public class ModelTrainer {
 
     @Override public void run() {
       for(int i = 0; i < numDocTopicIters; i++) {
+        // synchronous read-only call:
         readModel.trainDocTopicModel(document, docTopics, docTopicModel);
       }
       if(writeModel != null) {
+        // parallel call which is read-only on the docTopicModel, and write-only on the writeModel
+        // this method does not return until all rows of the docTopicModel have been submitted
+        // to write work queues
         writeModel.update(docTopicModel);
       }
     }
