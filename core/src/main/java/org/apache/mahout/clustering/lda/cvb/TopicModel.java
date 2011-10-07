@@ -46,8 +46,7 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
 
   private Sampler sampler;
   private final int numThreads;
-  private ThreadPoolExecutor threadPool = new ThreadPoolExecutor(32, 32, Integer.MAX_VALUE,
-      TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(100));
+  private ThreadPoolExecutor threadPool;
   private Updater[] updaters;
 
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary) {
@@ -109,7 +108,7 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
 
   private void initializeThreadPool() {
     threadPool = new ThreadPoolExecutor(numThreads, numThreads, 0, TimeUnit.SECONDS,
-        new ArrayBlockingQueue<Runnable>(numThreads));
+        new ArrayBlockingQueue<Runnable>(numThreads * 10));
     threadPool.allowCoreThreadTimeOut(false);
     updaters = new Updater[numThreads];
     for(int i = 0; i < numThreads; i++) {

@@ -83,6 +83,9 @@ public class CVB0Driver extends AbstractJob {
   public static final String ITERATION_BLOCK_SIZE = "iteration_block_size";
   public static final String RANDOM_SEED = "random_seed";
   public static final String TEST_SET_PERCENTAGE = "test_set_percentage";
+  public static final String NUM_TRAIN_THREADS = "num_train_threads";
+  public static final String NUM_UPDATE_THREADS = "num_update_threads";
+  public static final String MAX_ITERATIONS_PER_DOC = "max_doc_topic_iters";
 
   @Override public int run(String[] args) throws Exception {
     addInputOption();
@@ -95,12 +98,20 @@ public class CVB0Driver extends AbstractJob {
     addOption(NUM_TERMS, "nt", "Vocabulary size", false);
     addOption(DOC_TOPIC_SMOOTHING, "a", "Smoothing for document/topic distribution", "0.1");
     addOption(TERM_TOPIC_SMOOTHING, "e", "Smoothing for topic/term distribution, 0.1");
-    addOption(DICTIONARY, "dict", "Path to term-dictionary file(s) (glob expression supported)", false);
-    addOption(DOC_TOPIC_OUTPUT, "dt", "Output path for the training doc/topic distribution", false);
-    addOption(MODEL_TEMP_DIR, "mt", "Path to intermediate model path (useful for restarting)", false);
+    addOption(DICTIONARY, "dict", "Path to term-dictionary file(s) (glob expression supported)",
+        false);
+    addOption(DOC_TOPIC_OUTPUT, "dt", "Output path for the training doc/topic distribution",
+        false);
+    addOption(MODEL_TEMP_DIR, "mt", "Path to intermediate model path (useful for restarting)",
+        false);
     addOption(ITERATION_BLOCK_SIZE, "block", "Number of iterations per perplexity check", "10");
     addOption(RANDOM_SEED, "seed", "Random seed", false);
     addOption(TEST_SET_PERCENTAGE, "tp", "% of data to hold out for testing", false);
+    addOption(NUM_TRAIN_THREADS, "ntt", "number of threads per mapper to train with", "4");
+    addOption(NUM_UPDATE_THREADS, "nut", "number of threads per mapper to update the model with",
+        "1");
+    addOption(MAX_ITERATIONS_PER_DOC, "mipd",
+        "max number of iterations per doc for p(topic|doc) learning", "100");
 
     if(parseArguments(args) == null) {
       return -1;
@@ -114,6 +125,12 @@ public class CVB0Driver extends AbstractJob {
     double convergenceDelta = Double.parseDouble(getOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION));
     double alpha = Double.parseDouble(getOption(DOC_TOPIC_SMOOTHING));
     double eta = Double.parseDouble(getOption(TERM_TOPIC_SMOOTHING));
+    int numTrainThreads = hasOption(NUM_TRAIN_THREADS) ?
+        Integer.parseInt(getOption(NUM_TRAIN_THREADS)) : 4;
+    int numUpdateThreads = hasOption(NUM_UPDATE_THREADS) ?
+        Integer.parseInt(getOption(NUM_UPDATE_THREADS)) : 1;
+    int maxItersPerDoc = hasOption(MAX_ITERATIONS_PER_DOC) ?
+        Integer.parseInt(getOption(MAX_ITERATIONS_PER_DOC)) : 10;
     Path dictionaryPath = hasOption(DICTIONARY) ? new Path(getOption(DICTIONARY)) : null;
     int numTerms = hasOption(DICTIONARY)
                  ? getNumTerms(getConf(), dictionaryPath)
@@ -131,7 +148,7 @@ public class CVB0Driver extends AbstractJob {
 
     return run(getConf(), inputPath, topicModelOutputPath, numTopics, numTerms, alpha, eta,
         maxIterations, iterationBlockSize, convergenceDelta, dictionaryPath, docTopicOutputPath,
-        modelTempPath, seed, testFraction);
+        modelTempPath, seed, testFraction, numTrainThreads, numUpdateThreads, maxItersPerDoc);
   }
 
   private int getNumTerms(Configuration conf, Path dictionaryPath) throws IOException {
@@ -151,7 +168,8 @@ public class CVB0Driver extends AbstractJob {
   public int run(Configuration conf, Path inputPath, Path topicModelOutputPath, int numTopics,
       int numTerms, double alpha, double eta, int maxIterations, int iterationBlockSize,
       double convergenceDelta, Path dictionaryPath, Path docTopicOutputPath,
-      Path topicModelStateTempPath, long randomSeed, float testFraction)
+      Path topicModelStateTempPath, long randomSeed, float testFraction, int numTrainThreads,
+      int numUpdateThreads, int maxItersPerDoc)
       throws ClassNotFoundException, IOException, InterruptedException {
     String infoString = "Will run Collapsed Variational Bayes (0th-derivative approximation) " +
       "learning for LDA on {} (numTerms: {}), finding {}-topics, with document/topic prior {}, " +
@@ -178,6 +196,9 @@ public class CVB0Driver extends AbstractJob {
     conf.set(DOC_TOPIC_SMOOTHING, String.valueOf(alpha));
     conf.set(TERM_TOPIC_SMOOTHING, String.valueOf(eta));
     conf.set(RANDOM_SEED, String.valueOf(randomSeed));
+    conf.set(NUM_TRAIN_THREADS, String.valueOf(numTrainThreads));
+    conf.set(NUM_UPDATE_THREADS, String.valueOf(numUpdateThreads));
+    conf.set(MAX_ITERATIONS_PER_DOC, String.valueOf(maxItersPerDoc));
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations && previousPerplexity - perplexity > convergenceDelta) {
       iterationNumber++;

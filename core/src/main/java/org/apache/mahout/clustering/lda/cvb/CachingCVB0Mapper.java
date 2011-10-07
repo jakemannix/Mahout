@@ -33,9 +33,9 @@ public class CachingCVB0Mapper
     long seed = conf.getLong(CVB0Driver.RANDOM_SEED, 1234L);
     numTopics = conf.getInt(CVB0Driver.NUM_TOPICS, -1);
     int numTerms = conf.getInt(CVB0Driver.NUM_TERMS, -1);
-    int numUpdateThreads = 2; // TODO: configure!
-    int numTrainThreads = 10; // TODO: configure!
-    maxIters = 10; // TODO: configure!
+    int numUpdateThreads = conf.getInt(CVB0Driver.NUM_UPDATE_THREADS, 1);
+    int numTrainThreads = conf.getInt(CVB0Driver.NUM_TRAIN_THREADS, 4);
+    maxIters = conf.getInt(CVB0Driver.MAX_ITERATIONS_PER_DOC, 10);
     URI[] localFiles = DistributedCache.getCacheFiles(conf);
     Path[] localPaths = null;
     if(localFiles != null) {
@@ -59,11 +59,9 @@ public class CachingCVB0Mapper
   @Override
   public void map(IntWritable docId, VectorWritable document, Context context)
       throws IOException, InterruptedException{
-    modelTrainer.train(document.get(), topicVector(docId.get()), true, maxIters);
-  }
-
-  protected Vector topicVector(int docId) {
-    return new DenseVector(new double[numTopics]).assign(1/numTopics); /* where to get docTopics? */
+    /* where to get docTopics? */
+    Vector topicVector = new DenseVector(new double[numTopics]).assign(1/numTopics);
+    modelTrainer.train(document.get(), topicVector, true, maxIters);
   }
 
   @Override
