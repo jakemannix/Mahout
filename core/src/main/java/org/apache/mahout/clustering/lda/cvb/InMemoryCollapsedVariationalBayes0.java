@@ -27,7 +27,6 @@ import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterable;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DistributedRowMatrixWriter;
 import org.apache.mahout.math.Matrix;
-import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
@@ -35,7 +34,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -72,24 +70,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     // only for main usage
   }
 
-  public InMemoryCollapsedVariationalBayes0(Map<Integer, Map<String, Integer>> corpus,
-      int numTopics, double alpha, double eta, int minDfCt, double maxDfPct) {
-    this.numTopics = numTopics;
-    this.alpha = alpha;
-    this.eta = eta;
-    this.minDfCt = minDfCt;
-    this.maxDfPct = maxDfPct;
-    initializeCorpusWeights(corpus);
-    initializeModel();
-  }
-
   public void setVerbose(boolean verbose) {
     this.verbose = verbose;
-  }
-
-  public InMemoryCollapsedVariationalBayes0(Matrix corpus, String[] terms, int numTopics,
-      double alpha, double eta) {
-    this(corpus, terms, numTopics, alpha, eta, 1, 1);
   }
 
   public InMemoryCollapsedVariationalBayes0(Matrix corpus, String[] terms, int numTopics,
@@ -102,10 +84,12 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     corpusWeights = corpus;
     numDocuments = corpus.numRows();
     this.terms = terms;
-    numTerms = terms.length;
+    numTerms = terms != null ? terms.length : corpus.numCols();
     termIdMap = Maps.newHashMap();
-    for(int t=0; t<terms.length; t++) {
-      termIdMap.put(terms[t], t);
+    if(terms != null) {
+      for(int t=0; t<terms.length; t++) {
+        termIdMap.put(terms[t], t);
+      }
     }
     this.numTrainingThreads = numTrainingThreads;
     this.numUpdatingThreads = numUpdatingThreads;
@@ -126,66 +110,6 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     }
     String s = "Initializing corpus with %d docs, %d terms, %d nonzero entries, total termWeight %f";
     log.info(String.format(s, numDocuments, numTerms, numNonZero, totalCorpusWeight));
-  }
-
-  private void initializeCorpusWeights(Map<Integer, Map<String, Integer>> corpus) {
-    numDocuments = corpus.size();
-    Map<String, Integer> termCounts = termCount(corpus);
-    terms = termCounts.keySet().toArray(new String[termCounts.size()]);
-    numTerms = terms.length;
-    double[] termWeights = new double[terms.length];
-    for(int t=0; t<terms.length; t++) {
-      // Calculate the idf
-      termWeights[t] = Math.log(1 + (1 + numDocuments) / (1 + termCounts.get(terms[t])));
-    }
-    termIdMap = Maps.newHashMap();
-    for(int t=0; t<terms.length; t++) {
-      termIdMap.put(terms[t], t);
-    }
-    corpusWeights = new SparseRowMatrix(new int[]{numDocuments, numTerms}, true);
-    for(int i=0; i<numDocuments; i++) {
-      Map<String, Integer> document = corpus.get(i);
-      Vector docVector = new RandomAccessSparseVector(numTerms, document.size());
-      for(Map.Entry<String, Integer> e : document.entrySet()) {
-        if(termIdMap.containsKey(e.getKey())) {
-          int termId = termIdMap.get(e.getKey());
-          docVector.set(termId, e.getValue() * termWeights[termId]);
-        }
-      }
-      double norm = docVector.getNumNondefaultElements();
-      if(norm > 0) {
-        corpusWeights.assignRow(i, docVector);
-      } else {
-        log.warn("Empty document vector at docId( " + i + ")");
-      }
-    }
-    postInitCorpus();
-  }
-
-  private Map<String, Integer> termCount(Map<Integer, Map<String, Integer>> corpus) {
-    Map<String, Integer> termCounts = Maps.newHashMap();
-    for(int docId : corpus.keySet()) {
-      for(Map.Entry<String, Integer> e : corpus.get(docId).entrySet()) {
-        String term = e.getKey();
-        if(!termCounts.containsKey(term)) {
-          termCounts.put(term, 0);
-        }
-        termCounts.put(term, termCounts.get(term) + 1); // only count document frequencies here
-      }
-    }
-    Iterator<Map.Entry<String,Integer>> it = termCounts.entrySet().iterator();
-    Map.Entry<String, Integer> e = null;
-    while(it.hasNext() && (e = it.next()) != null) {
-      // trim out terms which are too frequent (dfPct > maxDfPct) or too rare (dfCt < minDfCt)
-      float df = (float)e.getValue();
-      if(df/numDocuments > maxDfPct) {
-        log.info(e.getKey() + " occurs " + df + " times, removing");
-        it.remove();
-      } else if(df < minDfCt) {
-        it.remove();
-      }
-    }
-    return termCounts;
   }
 
   private void initializeModel() {
@@ -302,10 +226,6 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         .withName("numTopics").withMinimum(1).withMaximum(1)
         .create()).withDescription("Number of topics to learn").withShortName("top").create();
 
-    Option numTermsToPrintOpt = obuilder.withLongName("numTermsToPrint").withRequired(false).withArgument(
-        abuilder.withName("numTopics").withMinimum(1).withMaximum(1).withDefault("10").create())
-        .withDescription("Number of terms to print per topic").withShortName("ttp").create();
-
     Option outputTopicFileOpt = obuilder.withLongName("topicOutputFile").withRequired(true).withArgument(
         abuilder.withName("topicOutputFile").withMinimum(1).withMaximum(1).create())
         .withDescription("File to write out p(term | topic)").withShortName("to").create();
@@ -334,17 +254,6 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         .withName("convergence").withMinimum(1).withMaximum(1).withDefault("0.0").create())
         .withDescription("Fractional rate of error to consider convergence").withShortName("c").create();
 
-    Option minDfCtOpt = obuilder.withLongName("minDocFreq").withRequired(false).withArgument(abuilder
-        .withName("minDocFreq").withMinimum(1).withMaximum(1).withDefault(2).create())
-        .withDescription("Minimum document frequency (integer!) to consider in vocabulary")
-        .withShortName("minDfCt").create();
-
-    Option maxDfPctOpt = obuilder.withLongName("maxDocFreqPercentage").withRequired(false)
-        .withArgument(abuilder.withName("maxDocFreqPercentage").withMinimum(1).withMaximum(1)
-        .withDefault(0.5).create())
-        .withDescription("Maximum percentage of documents a vocabulary term can occur in")
-        .withShortName("maxDfPct").create();
-
     Option reInferDocTopicsOpt = obuilder.withLongName("reInferDocTopics").withRequired(false)
         .withArgument(abuilder.withName("reInferDocTopics").withMinimum(1).withMaximum(1)
         .withDefault("no").create())
@@ -369,11 +278,10 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         .withDescription("print verbose information, like top-terms in each topic, during iteration")
         .withShortName("v").create();
 
-
     Group group = gbuilder.withName("Options").withOption(inputDirOpt).withOption(numTopicsOpt)
-        .withOption(numTermsToPrintOpt).withOption(alphaOpt).withOption(etaOpt)
+        .withOption(alphaOpt).withOption(etaOpt)
         .withOption(maxIterOpt).withOption(burnInOpt).withOption(convergenceOpt)
-        .withOption(minDfCtOpt).withOption(maxDfPctOpt).withOption(dictOpt).withOption(reInferDocTopicsOpt)
+        .withOption(dictOpt).withOption(reInferDocTopicsOpt)
         .withOption(outputDocFileOpt).withOption(outputTopicFileOpt).withOption(dfsOpt)
         .withOption(numTrainThreadsOpt).withOption(numUpdateThreadsOpt)
         .withOption(verboseOpt).create();
@@ -390,16 +298,13 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       }
 
       String inputDirString = (String) cmdLine.getValue(inputDirOpt);
-      String dictDirString = (String) cmdLine.getValue(dictOpt);
+      String dictDirString = cmdLine.hasOption(dictOpt) ? (String)cmdLine.getValue(dictOpt) : null;
       int numTopics = Integer.parseInt((String) cmdLine.getValue(numTopicsOpt));
-      int numTermsToPrint = Integer.parseInt((String)cmdLine.getValue(numTermsToPrintOpt));
       double alpha = Double.parseDouble((String)cmdLine.getValue(alphaOpt));
       double eta = Double.parseDouble((String)cmdLine.getValue(etaOpt));
       int maxIterations = Integer.parseInt((String)cmdLine.getValue(maxIterOpt));
       int burnInIterations = Integer.parseInt((String)cmdLine.getValue(burnInOpt));
       double minFractionalErrorChange = Double.parseDouble((String) cmdLine.getValue(convergenceOpt));
-      int minDfCt = Integer.parseInt((String)cmdLine.getValue(minDfCtOpt));
-      double maxDfPct = Float.parseFloat((String)cmdLine.getValue(maxDfPctOpt));
       int numTrainThreads = Integer.parseInt((String)cmdLine.getValue(numTrainThreadsOpt));
       int numUpdateThreads = Integer.parseInt((String)cmdLine.getValue(numUpdateThreadsOpt));
       String topicOutFile = (String)cmdLine.getValue(outputTopicFileOpt);
@@ -409,27 +314,21 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
       long start = System.nanoTime();
       InMemoryCollapsedVariationalBayes0 cvb0 = null;
-      if(dictDirString == null) {
-        Map<Integer, Map<String, Integer>> corpus = loadCorpus(inputDirString);
-        logTime("text-based corpus loading", System.nanoTime() - start);
-        start = System.nanoTime();
-        cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, numTopics, alpha, eta, minDfCt, maxDfPct);
-        logTime("cvb0 init", System.nanoTime() - start);
-      } else {
-        if(conf.get("fs.default.name") == null) {
-          String dfsNameNode = (String)cmdLine.getValue(dfsOpt);
-          conf.set("fs.default.name", dfsNameNode);
-        }
-        String[] terms = loadDictionary(dictDirString, conf);
-        logTime("dictionary loading", System.nanoTime() - start);
-        start = System.nanoTime();
-        Matrix corpus = loadVectors(inputDirString, conf);
-        logTime("vector seqfile corpus loading", System.nanoTime() - start);
-        start = System.nanoTime();
-        cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta,
-            numTrainThreads, numUpdateThreads);
-        logTime("cvb0 init", System.nanoTime() - start);
+
+      if(conf.get("fs.default.name") == null) {
+        String dfsNameNode = (String)cmdLine.getValue(dfsOpt);
+        conf.set("fs.default.name", dfsNameNode);
       }
+      String[] terms = loadDictionary(dictDirString, conf);
+      logTime("dictionary loading", System.nanoTime() - start);
+      start = System.nanoTime();
+      Matrix corpus = loadVectors(inputDirString, conf);
+      logTime("vector seqfile corpus loading", System.nanoTime() - start);
+      start = System.nanoTime();
+      cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta,
+          numTrainThreads, numUpdateThreads);
+      logTime("cvb0 init", System.nanoTime() - start);
+
       start = System.nanoTime();
       cvb0.setVerbose(verbose);
       double error = cvb0.iterateUntilConvergence(minFractionalErrorChange, maxIterations, burnInIterations);
@@ -475,6 +374,9 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   private static String[] loadDictionary(String dictionaryPath, Configuration conf)
       throws IOException {
+    if(dictionaryPath == null) {
+      return null;
+    }
     Path dictionaryFile = new Path(dictionaryPath);
     List<Pair<Integer, String>> termList = Lists.newArrayList();
     int maxTermId = 0;

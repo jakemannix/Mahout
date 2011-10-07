@@ -8,9 +8,11 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterable;
+import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.DistributedRowMatrixWriter;
 import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.MatrixSlice;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
@@ -30,7 +32,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-public class TopicModel implements Configurable {
+public class TopicModel implements Configurable, Iterable<MatrixSlice> {
   private static final Logger log = LoggerFactory.getLogger(TopicModel.class);
   private final String[] dictionary;
   private final Matrix topicTermCounts;
@@ -52,9 +54,9 @@ public class TopicModel implements Configurable {
     this(numTopics, numTerms, eta, alpha, null, dictionary, 1);
   }
 
-  public TopicModel(Path modelPath, Configuration conf, double eta, double alpha,
-      String[] dictionary, int numThreads) throws IOException {
-    this(loadModel(modelPath, conf), eta, alpha, dictionary, numThreads);
+  public TopicModel(Configuration conf, double eta, double alpha,
+      String[] dictionary, int numThreads, Path... modelpath) throws IOException {
+    this(loadModel(conf, modelpath), eta, alpha, dictionary, numThreads);
   }
 
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, Random random,
@@ -72,6 +74,11 @@ public class TopicModel implements Configurable {
     this(topicTermCounts, topicSums, eta, alpha, dictionary, 1);
   }
 
+  public TopicModel(Matrix topicTermCounts, double eta, double alpha, String[] dictionary,
+      int numThreads) {
+    this(topicTermCounts, getRowSums(topicTermCounts), eta, alpha, dictionary, numThreads);
+  }
+
   public TopicModel(Matrix topicTermCounts, Vector topicSums, double eta, double alpha,
     String[] dictionary, int numThreads) {
     this.dictionary = dictionary;
@@ -86,6 +93,14 @@ public class TopicModel implements Configurable {
     initializeThreadPool();
   }
 
+  private static Vector getRowSums(Matrix m) {
+    Vector v = new DenseVector(m.numRows());
+    for(MatrixSlice slice : m) {
+      v.set(slice.index(), slice.vector().norm(1));
+    }
+    return v;
+  }
+
   private void initializeThreadPool() {
     threadPool = new ThreadPoolExecutor(numThreads, numThreads, 0, TimeUnit.SECONDS,
         new ArrayBlockingQueue<Runnable>(numThreads));
@@ -95,7 +110,18 @@ public class TopicModel implements Configurable {
       updaters[i] = new Updater();
       threadPool.submit(updaters[i]);
     }
+  }
 
+  Matrix topicTermCounts() {
+    return topicTermCounts;
+  }
+
+  public Iterator<MatrixSlice> iterator() {
+    return topicTermCounts.iterateAll();
+  }
+
+  public Vector topicSums() {
+    return topicSums;
   }
 
   private static Pair<Matrix,Vector> randomMatrix(int numTopics, int numTerms, Random random) {
@@ -114,31 +140,39 @@ public class TopicModel implements Configurable {
     return Pair.of(topicTermCounts, topicSums);
   }
 
-  public static Pair<Matrix, Vector> loadModel(Path modelPath, Configuration conf)
+  public static Pair<Matrix, Vector> loadModel(Configuration conf, Path... modelPaths)
       throws IOException {
+    int numTopics = -1;
+    int numTerms = -1;
     List<Pair<Integer, Vector>> rows = Lists.newArrayList();
-    for(Pair<IntWritable, VectorWritable> row :
-        new SequenceFileIterable<IntWritable, VectorWritable>(modelPath, true, conf)) {
-      rows.add(Pair.of(row.getFirst().get(), row.getSecond().get()));
+    for(Path modelPath : modelPaths) {
+      for(Pair<IntWritable, VectorWritable> row :
+          new SequenceFileIterable<IntWritable, VectorWritable>(modelPath, true, conf)) {
+        rows.add(Pair.of(row.getFirst().get(), row.getSecond().get()));
+        numTopics = Math.max(numTopics, row.getFirst().get());
+        if(numTerms < 0) {
+          numTerms = row.getSecond().get().size();
+        }
+      }
     }
     if(rows.isEmpty()) {
-      throw new IOException(modelPath + " has no vectors in it");
+      throw new IOException(modelPaths + " have no vectors in it");
     }
-    Vector[] v = new Vector[rows.size()];
-    Vector topicSums = new DenseVector(v.length);
+    Matrix model = new DenseMatrix(numTopics, numTerms);
+    Vector topicSums = new DenseVector(numTerms);
     for(Pair<Integer, Vector> pair : rows) {
-      v[pair.getFirst()] = pair.getSecond();
+      model.getRow(pair.getFirst()).assign(pair.getSecond());
       topicSums.set(pair.getFirst(), pair.getSecond().norm(1));
     }
-    Matrix model = new SparseRowMatrix(new int[]{v.length, v[0].size()},
-        v, true, v[0] instanceof SequentialAccessSparseVector);
     return Pair.of(model, topicSums);
   }
 
   public String toString() {
     String buf = "";
     for(int x = 0; x < numTopics; x++) {
-      String v = vectorToSortedString(topicTermCounts.getRow(x), dictionary);
+      String v = dictionary != null
+          ? vectorToSortedString(topicTermCounts.getRow(x), dictionary)
+          : topicTermCounts.getRow(x).asFormatString();
       buf += v + "\n";
     }
     return buf;

@@ -17,13 +17,14 @@
 
 package org.apache.mahout.classifier.bayes;
 
-import java.io.IOException;
-
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Reducer;
 
+import java.io.IOException;
+
 /**
  * Can also be used as a local Combiner
+ * FIXME: This is also known as "the Identity" reducer.  Why is it here?
  */
 public class WikipediaDatasetCreatorReducer extends Reducer<Text, Text, Text, Text> {
 
