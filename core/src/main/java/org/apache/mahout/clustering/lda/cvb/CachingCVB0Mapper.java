@@ -7,6 +7,7 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.MatrixSlice;
+import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,38 +20,50 @@ public class CachingCVB0Mapper
     extends Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
   private static Logger log = LoggerFactory.getLogger(CachingCVB0Mapper.class);
 
-  private ModelTrainer modelTrainer;
-  private int maxIters;
-  private int numTopics;
+  protected ModelTrainer modelTrainer;
+  protected int maxIters;
+  protected int numTopics;
 
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
     super.setup(context);
     Configuration conf = context.getConfiguration();
-    URI[] localFiles = DistributedCache.getCacheFiles(conf);
-    Path[] localPaths = new Path[localFiles.length];
-    for(int i = 0; i < localFiles.length; i++) {
-      localPaths[i] = new Path(localFiles[i]);
-    }
     double eta = conf.getFloat(CVB0Driver.TERM_TOPIC_SMOOTHING, Float.NaN);
     double alpha = conf.getFloat(CVB0Driver.DOC_TOPIC_SMOOTHING, Float.NaN);
     long seed = conf.getLong(CVB0Driver.RANDOM_SEED, 1234L);
-    int numThreads = 4; // TODO: configure!
+    numTopics = conf.getInt(CVB0Driver.NUM_TOPICS, -1);
+    int numTerms = conf.getInt(CVB0Driver.NUM_TERMS, -1);
+    int numUpdateThreads = 2; // TODO: configure!
     int numTrainThreads = 10; // TODO: configure!
-    maxIters = 1; // TODO: configure!
-    TopicModel readModel = new TopicModel(conf, eta, alpha, null, numThreads, localPaths);
-    numTopics = readModel.topicTermCounts().numRows();
-    int numTerms = readModel.topicTermCounts().numCols();
-    TopicModel writeModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(seed), null,
-        numThreads);
+    maxIters = 10; // TODO: configure!
+    URI[] localFiles = DistributedCache.getCacheFiles(conf);
+    Path[] localPaths = null;
+    if(localFiles != null) {
+      localPaths = new Path[localFiles.length];
+      for(int i = 0; i < localFiles.length; i++) {
+        localPaths[i] = new Path(localFiles[i]);
+      }
+    }
+    TopicModel readModel;
+    if(localPaths != null) {
+      readModel = new TopicModel(conf, eta, alpha, null, numUpdateThreads, localPaths);
+    } else {
+      readModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(seed), null,
+          numTrainThreads);
+    }
+    TopicModel writeModel = new TopicModel(numTopics, numTerms, eta, alpha, null, numUpdateThreads);
     modelTrainer = new ModelTrainer(readModel, writeModel, numTrainThreads, numTopics, numTerms);
+    modelTrainer.start();
   }
 
   @Override
-  public void map(IntWritable docId, VectorWritable document, Context context) {
-    modelTrainer.train(document.get(),
-        new DenseVector(new double[numTopics]).assign(1/numTopics) /* where to get docTopics? */,
-        true, maxIters);
+  public void map(IntWritable docId, VectorWritable document, Context context)
+      throws IOException, InterruptedException{
+    modelTrainer.train(document.get(), topicVector(docId.get()), true, maxIters);
+  }
+
+  protected Vector topicVector(int docId) {
+    return new DenseVector(new double[numTopics]).assign(1/numTopics); /* where to get docTopics? */
   }
 
   @Override

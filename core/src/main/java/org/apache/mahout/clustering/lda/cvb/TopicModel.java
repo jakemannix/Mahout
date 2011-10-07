@@ -59,6 +59,12 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     this(loadModel(conf, modelpath), eta, alpha, dictionary, numThreads);
   }
 
+  public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary,
+      int numThreads) {
+    this(new DenseMatrix(numTopics, numTerms), new DenseVector(numTopics), eta, alpha, dictionary,
+        numThreads);
+  }
+
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, Random random,
       String[] dictionary, int numThreads) {
     this(randomMatrix(numTopics, numTerms, random), eta, alpha, dictionary, numThreads);
@@ -158,8 +164,9 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     if(rows.isEmpty()) {
       throw new IOException(modelPaths + " have no vectors in it");
     }
+    numTopics++;
     Matrix model = new DenseMatrix(numTopics, numTerms);
-    Vector topicSums = new DenseVector(numTerms);
+    Vector topicSums = new DenseVector(numTopics);
     for(Pair<Integer, Vector> pair : rows) {
       model.getRow(pair.getFirst()).assign(pair.getSecond());
       topicSums.set(pair.getFirst(), pair.getSecond().norm(1));

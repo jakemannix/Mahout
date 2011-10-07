@@ -1,9 +1,7 @@
 package org.apache.mahout.clustering.lda.cvb;
 
-import java.io.IOException;
-import java.util.Arrays;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -13,7 +11,6 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
@@ -23,12 +20,14 @@ import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
+import org.apache.mahout.common.mapreduce.VectorSumReducer;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.vectorizer.SparseVectorsFromSequenceFiles;
-import org.apache.mahout.vectorizer.common.PartialVectorMergeReducer;
-import org.apache.mahout.vectorizer.common.PartialVectorMerger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.net.URI;
 
 /**
  * Usage: <code>./bin/mahout cvb <i>options</i></code>
@@ -171,54 +170,35 @@ public class CVB0Driver extends AbstractJob {
     double perplexity = 0;
     double previousPerplexity = Integer.MAX_VALUE;
     int iterationNumber = getCurrentIterationNumber(conf, topicModelStateTempPath);
-    if(iterationNumber < 0) {
-      runStage0(conf, inputPath, topicModelStateTempPath);
-      iterationNumber = 0;
-    } else if (iterationNumber > maxIterations) {
+    if (iterationNumber > maxIterations) {
       iterationNumber = maxIterations;
     }
-    conf.set(CVB0Mapper.NUM_TOPICS, String.valueOf(numTopics));
-    conf.set(CVB0Mapper.NUM_TERMS, String.valueOf(numTerms));
-    conf.set(CVB0Mapper.ALPHA, String.valueOf(alpha));
-    conf.set(CVB0Mapper.ETA, String.valueOf(eta));
-    conf.set(CVB0Mapper.RANDOM_SEED, String.valueOf(randomSeed));
-    conf.set(CVB0Mapper.TEST_SET_PCT, String.valueOf(testFraction));
+    conf.set(NUM_TOPICS, String.valueOf(numTopics));
+    conf.set(NUM_TERMS, String.valueOf(numTerms));
+    conf.set(DOC_TOPIC_SMOOTHING, String.valueOf(alpha));
+    conf.set(TERM_TOPIC_SMOOTHING, String.valueOf(eta));
+    conf.set(RANDOM_SEED, String.valueOf(randomSeed));
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations && previousPerplexity - perplexity > convergenceDelta) {
       iterationNumber++;
       log.info("About to run iteration {} of {}", iterationNumber, maxIterations);
-      Path stage1input = stage1InputPath(topicModelStateTempPath, iterationNumber - 1);
-      Path stage1output = stage1OutputPath(topicModelStateTempPath, iterationNumber - 1);
-      runIteration(conf, stage1input, stage1output, iterationNumber, maxIterations);
+      Path modelInputPath = modelPath(topicModelStateTempPath, iterationNumber - 1);
+      Path modelOutputPath = modelPath(topicModelStateTempPath, iterationNumber);
+      runIteration(conf, inputPath, modelInputPath, modelOutputPath, iterationNumber, maxIterations);
       if(testFraction > 0 && iterationNumber % iterationBlockSize == 0) {
         previousPerplexity = perplexity;
-        perplexity = calculatePerplexity(conf, stage1output);
+        perplexity = calculatePerplexity(conf, modelOutputPath);
         log.info("Current perplexity = " + perplexity);
       }
     }
-    log.info("Completed {} iterations in {} seconds", iterationNumber, (System.currentTimeMillis() - startTime)/1000);
-    Path finalIterationData = stage1InputPath(topicModelStateTempPath, iterationNumber);
-    Job topicWritingJob = writeTopicModelVectors(finalIterationData, topicModelOutputPath, numTerms);
+    log.info("Completed {} iterations in {} seconds", iterationNumber,
+        (System.currentTimeMillis() - startTime)/1000);
+    Path finalIterationData = modelPath(topicModelStateTempPath, iterationNumber);
     Job docInferenceJob = docTopicOutputPath != null
-        ? writeDocTopicInference(finalIterationData, docTopicOutputPath)
+        ? writeDocTopicInference(conf, inputPath, finalIterationData, docTopicOutputPath)
         : null;
-    try {
-      if(!topicWritingJob.waitForCompletion(true)) {
-        return -1;
-      }
-      if(docInferenceJob != null && !docInferenceJob.waitForCompletion(true)) {
-        return -1;
-      }
-    } finally {
-      // get rid of temp paths
-      Path[] tmpPaths = FileInputFormat.getInputPaths(topicWritingJob);
-      if (tmpPaths != null && tmpPaths.length > 0) {
-        try {
-          HadoopUtil.delete(conf, tmpPaths);
-        } catch (Exception e) {
-          log.error("Failed to delete temp paths '" + Arrays.toString(tmpPaths) + "'");
-        }
-      }
+    if(docInferenceJob != null && !docInferenceJob.waitForCompletion(true)) {
+      return -1;
     }
     return 0;
   }
@@ -259,84 +239,36 @@ public class CVB0Driver extends AbstractJob {
     return perplexity;
   }
 
-  private Job writeTopicModelVectors(Path input, Path output, int numTerms)
-      throws ClassNotFoundException, IOException, InterruptedException {
-    String jobName = String.format("Writing final topic model (as vectors, dimension: %d) from %s to %s", numTerms, input, output);
-    log.info("About to run: " + jobName);
-    Configuration conf = new Configuration(getConf());
-    Job job = new Job(conf, jobName);
-    job.setMapperClass(TermDedupingMapper.class);
-    job.setCombinerClass(TopicTermOutputReducer.class);
-    job.setReducerClass(TopicTermOutputReducer.class);
-    job.setInputFormatClass(SequenceFileInputFormat.class);
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
-    job.setOutputKeyClass(CVBKey.class);
-    job.setOutputValueClass(CVBTuple.class);
-    FileInputFormat.addInputPath(job, input);
-    Path intermediatePath = new Path(input.getParent(), "topicModelTemp-" + System.nanoTime());
-    FileOutputFormat.setOutputPath(job, intermediatePath);
-    job.setJarByClass(CVB0Driver.class);
-    if(!job.waitForCompletion(true)) {
-      throw new InterruptedException("Could not complete: " + jobName);
-    }
-    conf = new Configuration(getConf());
-    conf.set(PartialVectorMerger.DIMENSION, String.valueOf(numTerms));
-    conf.set(CVB0Mapper.NUM_TERMS, String.valueOf(numTerms));
-    job = new Job(conf, jobName);
-    job.setMapperClass(TopicVectorOutputMapper.class);
-    job.setCombinerClass(PartialVectorMergeReducer.class);
-    job.setReducerClass(PartialVectorMergeReducer.class);
-    job.setInputFormatClass(SequenceFileInputFormat.class);
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
-    job.setOutputKeyClass(IntWritable.class);
-    job.setOutputValueClass(VectorWritable.class);
-    FileInputFormat.addInputPath(job, intermediatePath);
-    FileOutputFormat.setOutputPath(job, output);
-    job.setJarByClass(CVB0Driver.class);
-    job.submit();
-    return job;
-  }
-
-  private Job writeDocTopicInference(Path input, Path output)
+  private Job writeDocTopicInference(Configuration conf, Path corpus, Path modelInput, Path output)
       throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = String.format("Writing final document/topic inference from %s to %s", input, output);
+    String jobName = String.format("Writing final document/topic inference from %s to %s", corpus,
+        output);
     log.info("About to run: " + jobName);
     Job job = new Job(getConf(), jobName);
-    job.setMapperClass(DocTopicOutputMapper.class);
-    job.setCombinerClass(DocTopicOutputReducer.class);
-    job.setReducerClass(DocTopicOutputReducer.class);
-    job.setInputFormatClass(SequenceFileInputFormat.class);
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
-    job.setOutputKeyClass(IntWritable.class);
-    job.setOutputValueClass(VectorWritable.class);
-    FileInputFormat.addInputPath(job, input);
-    FileOutputFormat.setOutputPath(job, output);
-    job.setJarByClass(CVB0Driver.class);
-    job.submit();
-    return job;
-  }
-
-  public void runStage0(Configuration conf, Path inputPath, Path topicModelStateTempPath)
-      throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = String.format("Converting %s to CVB format", inputPath);
-    log.info("About to run: " + jobName);
-    Job job = new Job(conf, jobName);
-    job.setMapperClass(DistributedRowMatrixInputMapper.class);
+    job.setMapperClass(CVB0DocInferenceMapper.class);
     job.setNumReduceTasks(0);
     job.setInputFormatClass(SequenceFileInputFormat.class);
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
-    job.setOutputKeyClass(CVBKey.class);
-    job.setOutputValueClass(CVBTuple.class);
-    FileInputFormat.addInputPath(job, inputPath);
-    FileOutputFormat.setOutputPath(job, stage1InputPath(topicModelStateTempPath, 0));
-    job.setJarByClass(CVB0Driver.class);
-    if(!job.waitForCompletion(true)) {
-      throw new IOException("Unable to convert to CVB format");
+    job.setOutputKeyClass(IntWritable.class);
+    job.setOutputValueClass(VectorWritable.class);
+    FileSystem fs = FileSystem.get(conf);
+    if(modelInput != null && fs.exists(modelInput)) {
+      FileStatus[] statuses = FileSystem.get(conf).listStatus(modelInput, PathFilters.partFilter());
+      URI[] modelUris = new URI[statuses.length];
+      for(int i = 0; i < statuses.length; i++) {
+        modelUris[i] = statuses[i].getPath().toUri();
+      }
+      DistributedCache.setCacheFiles(modelUris, conf);
     }
+    FileInputFormat.addInputPath(job, corpus);
+    FileOutputFormat.setOutputPath(job, output);
+    job.setJarByClass(CVB0Driver.class);
+    job.submit();
+    return job;
   }
 
-  public static Path stage1InputPath(Path topicModelStateTempPath, int iterationNumber) {
-    return new Path(topicModelStateTempPath, "stage1-" + iterationNumber);
+  public static Path modelPath(Path topicModelStateTempPath, int iterationNumber) {
+    return new Path(topicModelStateTempPath, "model-" + iterationNumber);
   }
 
   public static Path stage1OutputPath(Path topicModelStateTempPath, int iterationNumber) {
@@ -347,66 +279,47 @@ public class CVB0Driver extends AbstractJob {
       throws IOException {
     FileSystem fs = FileSystem.get(config);
     int iterationNumber = 0;
-    Path iterationPath = stage1InputPath(modelTempDir, iterationNumber);
+    Path iterationPath = modelPath(modelTempDir, iterationNumber);
     while(fs.exists(iterationPath)) {
       log.info("found previous state: " + iterationPath);
       iterationNumber++;
-      iterationPath = stage1InputPath(modelTempDir, iterationNumber);
+      iterationPath = modelPath(modelTempDir, iterationNumber);
     }
     return iterationNumber - 1;
   }
 
-  public void runIterationStage1(Configuration conf, Path stage1input, Path stage1output,
+  public void runIteration(Configuration conf, Path corpusInput, Path modelInput, Path modelOutput,
       int iterationNumber, int maxIterations) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = String.format("Iteration %d of %d, stage 1 of 2, input path: %s", iterationNumber, maxIterations, stage1input);
+    String jobName = String.format("Iteration %d of %d, stage 1 of 2, input path: %s",
+        iterationNumber, maxIterations, modelInput);
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
-    job.setMapperClass(CVB0Mapper.class);
-    job.setReducerClass(CVB0Reducer.class);
-    job.setCombinerClass(CVB0Combiner.class);
-    job.setGroupingComparatorClass(CVB0GroupingComparator.class);
-    job.setSortComparatorClass(CVBSortingComparator.class);
-    job.setPartitionerClass(CVB0Partitioner.class);
-    job.setMapOutputKeyClass(CVBKey.class);
-    job.setMapOutputValueClass(CVBTuple.class);
-    job.setOutputKeyClass(CVBKey.class);
-    job.setOutputValueClass(CVBTuple.class);
+    job.setMapperClass(CachingCVB0Mapper.class);
+    job.setReducerClass(VectorSumReducer.class);
+    job.setCombinerClass(VectorSumReducer.class);
+    job.setMapOutputKeyClass(IntWritable.class);
+    job.setMapOutputValueClass(VectorWritable.class);
+    job.setOutputKeyClass(IntWritable.class);
+    job.setOutputValueClass(VectorWritable.class);
     job.setInputFormatClass(SequenceFileInputFormat.class);
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
-    FileInputFormat.addInputPath(job, stage1input);
-    FileOutputFormat.setOutputPath(job, stage1output);
-    HadoopUtil.delete(conf, stage1output);
+    FileInputFormat.addInputPath(job, corpusInput);
+    FileOutputFormat.setOutputPath(job, modelOutput);
+    FileSystem fs = FileSystem.get(conf);
+    if(modelInput != null && fs.exists(modelInput)) {
+      FileStatus[] statuses = FileSystem.get(conf).listStatus(modelInput, PathFilters.partFilter());
+      URI[] modelUris = new URI[statuses.length];
+      for(int i = 0; i < statuses.length; i++) {
+        modelUris[i] = statuses[i].getPath().toUri();
+      }
+      DistributedCache.setCacheFiles(modelUris, conf);
+    }
+    HadoopUtil.delete(conf, modelOutput);
     job.setJarByClass(CVB0Driver.class);
     if(!job.waitForCompletion(true)) {
-      throw new InterruptedException(String.format("Failed to complete iteration %d stage 1", iterationNumber));
+      throw new InterruptedException(String.format("Failed to complete iteration %d stage 1",
+          iterationNumber));
     }
-  }
-
-  public void runIterationStage2(Configuration conf, Path stage1input, Path stage1output,
-      int iterationNumber, int maxIterations) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = String.format("Iteration %d of %d, stage 2 of 2, input path: %s", iterationNumber, maxIterations, stage1output);
-    log.info("About to run: " + jobName);
-    Job job = new Job(conf, jobName);
-    job.setMapperClass(Mapper.class);
-    job.setReducerClass(CVBAggregatingReducer.class);
-    job.setSortComparatorClass(CVBSortingComparator.class);
-    //job.setCombinerClass(CVBAggregatingReducer.class);
-    job.setOutputKeyClass(CVBKey.class);
-    job.setOutputValueClass(CVBTuple.class);
-    job.setInputFormatClass(SequenceFileInputFormat.class);
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
-    FileInputFormat.addInputPath(job, stage1output);
-    FileOutputFormat.setOutputPath(job, stage1InputPath(stage1output.getParent(), iterationNumber));
-    job.setJarByClass(CVB0Driver.class);
-    if(!job.waitForCompletion(true)) {
-      throw new InterruptedException(String.format("Failed to complete iteration %d stage 2", iterationNumber));
-    }
-  }
-
-  public void runIteration(Configuration conf, Path stage1input, Path stage1output, int iterationNumber, int maxIterations)
-      throws IOException, ClassNotFoundException, InterruptedException {
-    runIterationStage1(conf, stage1input, stage1output, iterationNumber, maxIterations);
-    runIterationStage2(conf, stage1input, stage1output, iterationNumber, maxIterations);
   }
 
   private static class TopicTermOutputReducer extends UniquingReducer<CVBKey, CVBTuple> {}
