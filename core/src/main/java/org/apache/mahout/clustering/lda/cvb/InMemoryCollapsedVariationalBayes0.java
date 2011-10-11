@@ -303,7 +303,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       double alpha = Double.parseDouble((String)cmdLine.getValue(alphaOpt));
       double eta = Double.parseDouble((String)cmdLine.getValue(etaOpt));
       int maxIterations = Integer.parseInt((String)cmdLine.getValue(maxIterOpt));
-      int burnInIterations = Integer.parseInt((String)cmdLine.getValue(burnInOpt));
+      int burnInIterations = (Integer) cmdLine.getValue(burnInOpt);
       double minFractionalErrorChange = Double.parseDouble((String) cmdLine.getValue(convergenceOpt));
       int numTrainThreads = Integer.parseInt((String)cmdLine.getValue(numTrainThreadsOpt));
       int numUpdateThreads = Integer.parseInt((String)cmdLine.getValue(numUpdateThreadsOpt));

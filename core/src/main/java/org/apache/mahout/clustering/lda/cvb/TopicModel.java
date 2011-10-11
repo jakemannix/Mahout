@@ -220,8 +220,13 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     normalizeByTopic(docTopicModel);
     // now multiply, term-by-term, by the document, to get the weighted distribution of
     // term-topic pairs from this document.
-    for(int x = 0; x < numTopics; x++) {
-      docTopicModel.assignRow(x, docTopicModel.getRow(x).times(original));
+    Iterator<Vector.Element> it = original.iterateNonZero();
+    while(it.hasNext()) {
+      Vector.Element e = it.next();
+      for(int x = 0; x < numTopics; x++) {
+        Vector docTopicModelRow = docTopicModel.getRow(x);
+        docTopicModelRow.setQuick(e.index(), docTopicModelRow.getQuick(e.index()) * e.get());
+      }
     }
     // now recalculate p(topic|doc) by summing contributions from all of pTopicGivenTerm
     topics.assign(0d);

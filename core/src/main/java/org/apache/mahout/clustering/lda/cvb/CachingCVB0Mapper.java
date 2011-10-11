@@ -41,7 +41,7 @@ public class CachingCVB0Mapper
     if(localFiles != null) {
       localPaths = new Path[localFiles.length];
       for(int i = 0; i < localFiles.length; i++) {
-        localPaths[i] = new Path(localFiles[i]);
+        localPaths[i] = new Path(localFiles[i].toString());
       }
     }
     TopicModel readModel;

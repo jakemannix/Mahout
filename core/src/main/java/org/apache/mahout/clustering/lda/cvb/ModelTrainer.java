@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -58,14 +59,21 @@ public class ModelTrainer {
     Iterator<MatrixSlice> docTopicIterator = docTopicCounts.iterator();
     long startTime = System.nanoTime();
     int i = 0;
+    double[] times = new double[100];
     while(docIterator.hasNext() && docTopicIterator.hasNext()) {
       i++;
       Vector document = docIterator.next().vector();
       Vector topicDist = docTopicIterator.next().vector();
+      long start = System.nanoTime();
       train(document, topicDist, true, numDocTopicIters);
-      if(i % 10000 == 0) {
+      times[i % times.length] = ((System.nanoTime() - start)/(1e6 * document.getNumNondefaultElements()));
+      if(i % 100 == 0) {
         long time = System.nanoTime() - startTime;
         log.info("trained " + i + " documents in " + (time * 1d / 1e6) + "ms");
+        if(i % 500 == 0) {
+          Arrays.sort(times);
+          log.info("training took median " + times[times.length / 2] + "ms per token-instance");
+        }
       }
     }
     stop();
