@@ -36,6 +36,7 @@ public class CachingCVB0Mapper
     int numUpdateThreads = conf.getInt(CVB0Driver.NUM_UPDATE_THREADS, 1);
     int numTrainThreads = conf.getInt(CVB0Driver.NUM_TRAIN_THREADS, 4);
     maxIters = conf.getInt(CVB0Driver.MAX_ITERATIONS_PER_DOC, 10);
+    double modelWeight = conf.getFloat(CVB0Driver.MODEL_WEIGHT, 1f);
     URI[] localFiles = DistributedCache.getCacheFiles(conf);
     Path[] localPaths = null;
     if(localFiles != null) {
@@ -46,12 +47,14 @@ public class CachingCVB0Mapper
     }
     TopicModel readModel;
     if(localPaths != null) {
-      readModel = new TopicModel(conf, eta, alpha, null, numUpdateThreads, localPaths);
+      readModel = new TopicModel(conf, eta, alpha, null, numUpdateThreads, modelWeight, localPaths);
     } else {
       readModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(seed), null,
-          numTrainThreads);
+          numTrainThreads, modelWeight);
     }
-    TopicModel writeModel = new TopicModel(numTopics, numTerms, eta, alpha, null, numUpdateThreads);
+    TopicModel writeModel = modelWeight == 1
+        ? new TopicModel(numTopics, numTerms, eta, alpha, null, numUpdateThreads)
+        : readModel;
     modelTrainer = new ModelTrainer(readModel, writeModel, numTrainThreads, numTopics, numTerms);
     modelTrainer.start();
   }

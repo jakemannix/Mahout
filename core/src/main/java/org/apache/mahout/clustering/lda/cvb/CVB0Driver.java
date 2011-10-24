@@ -86,6 +86,7 @@ public class CVB0Driver extends AbstractJob {
   public static final String NUM_TRAIN_THREADS = "num_train_threads";
   public static final String NUM_UPDATE_THREADS = "num_update_threads";
   public static final String MAX_ITERATIONS_PER_DOC = "max_doc_topic_iters";
+  public static final String MODEL_WEIGHT = "prev_iter_mult";
 
   @Override public int run(String[] args) throws Exception {
     addInputOption();
@@ -199,6 +200,7 @@ public class CVB0Driver extends AbstractJob {
     conf.set(NUM_TRAIN_THREADS, String.valueOf(numTrainThreads));
     conf.set(NUM_UPDATE_THREADS, String.valueOf(numUpdateThreads));
     conf.set(MAX_ITERATIONS_PER_DOC, String.valueOf(maxItersPerDoc));
+    conf.set(MODEL_WEIGHT, String.valueOf(1)); // TODO:
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations && previousPerplexity - perplexity > convergenceDelta) {
       iterationNumber++;
@@ -311,7 +313,7 @@ public class CVB0Driver extends AbstractJob {
 
   public void runIteration(Configuration conf, Path corpusInput, Path modelInput, Path modelOutput,
       int iterationNumber, int maxIterations) throws IOException, ClassNotFoundException, InterruptedException {
-    String jobName = String.format("Iteration %d of %d, stage 1 of 2, input path: %s",
+    String jobName = String.format("Iteration %d of %d, input path: %s",
         iterationNumber, maxIterations, modelInput);
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);

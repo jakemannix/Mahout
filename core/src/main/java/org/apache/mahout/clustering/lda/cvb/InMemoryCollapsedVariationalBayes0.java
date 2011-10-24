@@ -55,6 +55,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   private Matrix corpusWeights; // length numDocs;
   private double totalCorpusWeight;
+  private double initialModelCorpusFraction;
 
   private Matrix docTopicCounts;
 
@@ -75,7 +76,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   }
 
   public InMemoryCollapsedVariationalBayes0(Matrix corpus, String[] terms, int numTopics,
-      double alpha, double eta, int numTrainingThreads, int numUpdatingThreads) {
+      double alpha, double eta, int numTrainingThreads, int numUpdatingThreads,
+      double modelCorpusFraction) {
     this.numTopics = numTopics;
     this.alpha = alpha;
     this.eta = eta;
@@ -84,6 +86,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     corpusWeights = corpus;
     numDocuments = corpus.numRows();
     this.terms = terms;
+    this.initialModelCorpusFraction = modelCorpusFraction;
     numTerms = terms != null ? terms.length : corpus.numCols();
     termIdMap = Maps.newHashMap();
     if(terms != null) {
@@ -114,9 +117,13 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   private void initializeModel() {
     topicModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(1234), terms,
-        numUpdatingThreads);
+        numUpdatingThreads,
+        initialModelCorpusFraction == 0 ? 1 : initialModelCorpusFraction * totalCorpusWeight);
     topicModel.setConf(getConf());
-    updatedModel = new TopicModel(numTopics, numTerms, eta, alpha, null, terms, numUpdatingThreads);
+
+    updatedModel = initialModelCorpusFraction == 0
+        ? new TopicModel(numTopics, numTerms, eta, alpha, null, terms, numUpdatingThreads, 1)
+        : topicModel;
     updatedModel.setConf(getConf());
     docTopicCounts = new DenseMatrix(numDocuments, numTopics);
     docTopicCounts.assign(1/numTopics);
@@ -246,6 +253,11 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         .withName("maxIterations").withMinimum(1).withMaximum(1).withDefault(10).create())
         .withDescription("Maximum number of training passes").withShortName("m").create();
 
+    Option modelCorpusFractionOption = obuilder.withLongName("modelCorpusFraction")
+        .withRequired(false).withArgument(abuilder.withName("modelCorpusFraction").withMinimum(1)
+        .withMaximum(1).withDefault(0d).create()).withShortName("mcf")
+        .withDescription("For online updates, initial value of |model|/|corpus|").create();
+
     Option burnInOpt = obuilder.withLongName("burnInIterations").withRequired(false).withArgument(abuilder
         .withName("burnInIterations").withMinimum(1).withMaximum(1).withDefault(5).create())
         .withDescription("Minimum number of iterations").withShortName("b").create();
@@ -284,7 +296,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         .withOption(dictOpt).withOption(reInferDocTopicsOpt)
         .withOption(outputDocFileOpt).withOption(outputTopicFileOpt).withOption(dfsOpt)
         .withOption(numTrainThreadsOpt).withOption(numUpdateThreadsOpt)
-        .withOption(verboseOpt).create();
+        .withOption(modelCorpusFractionOption).withOption(verboseOpt).create();
 
     try {
       Parser parser = new Parser();
@@ -311,6 +323,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       String docOutFile = (String)cmdLine.getValue(outputDocFileOpt);
       String reInferDocTopics = (String)cmdLine.getValue(reInferDocTopicsOpt);
       boolean verbose = Boolean.parseBoolean((String) cmdLine.getValue(verboseOpt));
+      double modelCorpusFraction = (Double) cmdLine.getValue(modelCorpusFractionOption);
 
       long start = System.nanoTime();
       InMemoryCollapsedVariationalBayes0 cvb0 = null;
@@ -326,7 +339,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       logTime("vector seqfile corpus loading", System.nanoTime() - start);
       start = System.nanoTime();
       cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta,
-          numTrainThreads, numUpdateThreads);
+          numTrainThreads, numUpdateThreads, modelCorpusFraction);
       logTime("cvb0 init", System.nanoTime() - start);
 
       start = System.nanoTime();

@@ -1,5 +1,7 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.apache.hadoop.fs.Path;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.MatrixSlice;
@@ -12,8 +14,11 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -26,6 +31,11 @@ public class ModelTrainer {
   private ThreadPoolExecutor threadPool;
   private BlockingQueue<Runnable> workQueue;
   private int numTrainThreads;
+  private boolean isReadWrite;
+
+  public ModelTrainer(TopicModel model, int numTrainThreads, int numTopics, int numTerms) {
+    this(model, model, numTrainThreads, numTopics, numTerms);
+  }
 
   public ModelTrainer(TopicModel initialReadModel, TopicModel initialWriteModel,
       int numTrainThreads, int numTopics, int numTerms) {
@@ -34,6 +44,7 @@ public class ModelTrainer {
     this.numTrainThreads = numTrainThreads;
     this.numTopics = numTopics;
     this.numTerms = numTerms;
+    isReadWrite = (initialReadModel == initialWriteModel);
   }
 
   public TopicModel getReadModel() {
@@ -60,23 +71,66 @@ public class ModelTrainer {
     long startTime = System.nanoTime();
     int i = 0;
     double[] times = new double[100];
+    Map<Vector, Vector> batch = Maps.newHashMap();
+    int numTokensInBatch = 0;
+    long batchStart = System.nanoTime();
     while(docIterator.hasNext() && docTopicIterator.hasNext()) {
       i++;
       Vector document = docIterator.next().vector();
       Vector topicDist = docTopicIterator.next().vector();
-      long start = System.nanoTime();
-      train(document, topicDist, true, numDocTopicIters);
-      times[i % times.length] = ((System.nanoTime() - start)/(1e6 * document.getNumNondefaultElements()));
-      if(i % 100 == 0) {
-        long time = System.nanoTime() - startTime;
-        log.info("trained " + i + " documents in " + (time * 1d / 1e6) + "ms");
-        if(i % 500 == 0) {
-          Arrays.sort(times);
-          log.info("training took median " + times[times.length / 2] + "ms per token-instance");
+      if(isReadWrite) {
+        if(batch.size() < numTrainThreads) {
+          batch.put(document, topicDist);
+          if(log.isDebugEnabled()) {
+            numTokensInBatch += document.getNumNondefaultElements();
+          }
+        } else {
+          batchTrain(batch, true, numDocTopicIters);
+          long time = System.nanoTime();
+          log.debug("trained {} docs with {} tokens, start time {}, end time {}",
+              new Object[] {numTrainThreads, numTokensInBatch, batchStart, time});
+          batchStart = time;
+          numTokensInBatch = 0;
+        }
+      } else {
+        long start = System.nanoTime();
+        train(document, topicDist, true, numDocTopicIters);
+        if(log.isDebugEnabled()) {
+          times[i % times.length] =
+              ((System.nanoTime() - start)/(1e6 * document.getNumNondefaultElements()));
+          if(i % 100 == 0) {
+            long time = System.nanoTime() - startTime;
+            log.debug("trained " + i + " documents in " + (time * 1d / 1e6) + "ms");
+            if(i % 500 == 0) {
+              Arrays.sort(times);
+              log.debug("training took median " + times[times.length / 2] + "ms per token-instance");
+            }
+          }
         }
       }
     }
     stop();
+  }
+
+  public void batchTrain(Map<Vector, Vector> batch, boolean update, int numDocTopicsIters) {
+    while(true) {
+      try {
+        List<TrainerRunnable> runnables = Lists.newArrayList();
+        for(Map.Entry<Vector, Vector> entry : batch.entrySet()) {
+          runnables.add(new TrainerRunnable(readModel, null, entry.getKey(),
+              entry.getValue(), new SparseRowMatrix(new int[]{numTopics, numTerms}, true),
+              numDocTopicsIters));
+        }
+        threadPool.invokeAll(runnables);
+        if(update) {
+          for(TrainerRunnable runnable : runnables) {
+            writeModel.update(runnable.docTopicModel);
+          }
+        }
+      } catch (InterruptedException e) {
+        log.warn("Interrupted during batch training, retrying!", e);
+      }
+    }
   }
 
   public void train(Vector document, Vector docTopicCounts, boolean update, int numDocTopicIters) {
@@ -119,7 +173,7 @@ public class ModelTrainer {
     readModel.persist(outputPath, true);
   }
 
-  private static class TrainerRunnable implements Runnable {
+  private static class TrainerRunnable implements Runnable, Callable<Boolean> {
     private final TopicModel readModel;
     private final TopicModel writeModel;
     private final Vector document;
@@ -148,6 +202,11 @@ public class ModelTrainer {
         // to write work queues
         writeModel.update(docTopicModel);
       }
+    }
+
+    @Override public Boolean call() throws Exception {
+      run();
+      return true;
     }
   }
 }

@@ -47,7 +47,7 @@ public class CVB0Mapper extends Mapper<CVBKey, CVBTuple, CVBKey, CVBTuple> {
     testSetFraction = conf.getFloat(TEST_SET_PCT, 0f);
     topicSumPartitioningFactor = conf.getInt(TOPIC_SUM_PARTITIONING_FACTOR, 10);
     inference = new CVBInference(eta, alpha, numTerms);
-    modelCache = new TopicModel(numTopics, numTerms, eta, alpha, null);
+    modelCache = new TopicModel(numTopics, numTerms, eta, alpha, null, 1);
   }
 
   private int currentTermId;

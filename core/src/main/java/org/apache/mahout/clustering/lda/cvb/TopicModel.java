@@ -14,7 +14,6 @@ import org.apache.mahout.math.DistributedRowMatrixWriter;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.MatrixSlice;
 import org.apache.mahout.math.SequentialAccessSparseVector;
-import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.function.Functions;
@@ -49,43 +48,45 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
   private ThreadPoolExecutor threadPool;
   private Updater[] updaters;
 
-  public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary) {
-    this(numTopics, numTerms, eta, alpha, null, dictionary, 1);
+  public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary,
+      double modelWeight) {
+    this(numTopics, numTerms, eta, alpha, null, dictionary, 1, modelWeight);
   }
 
   public TopicModel(Configuration conf, double eta, double alpha,
-      String[] dictionary, int numThreads, Path... modelpath) throws IOException {
-    this(loadModel(conf, modelpath), eta, alpha, dictionary, numThreads);
+      String[] dictionary, int numThreads, double modelWeight, Path... modelpath) throws IOException {
+    this(loadModel(conf, modelpath), eta, alpha, dictionary, numThreads, modelWeight);
   }
 
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary,
-      int numThreads) {
+      int numThreads, double modelWeight) {
     this(new DenseMatrix(numTopics, numTerms), new DenseVector(numTopics), eta, alpha, dictionary,
-        numThreads);
+        numThreads, modelWeight);
   }
 
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, Random random,
-      String[] dictionary, int numThreads) {
-    this(randomMatrix(numTopics, numTerms, random), eta, alpha, dictionary, numThreads);
+      String[] dictionary, int numThreads, double modelWeight) {
+    this(randomMatrix(numTopics, numTerms, random), eta, alpha, dictionary, numThreads, modelWeight);
   }
 
   private TopicModel(Pair<Matrix, Vector> model, double eta, double alpha, String[] dict,
-      int numThreads) {
-    this(model.getFirst(), model.getSecond(), eta, alpha, dict, numThreads);
+      int numThreads, double modelWeight) {
+    this(model.getFirst(), model.getSecond(), eta, alpha, dict, numThreads, modelWeight);
   }
 
   public TopicModel(Matrix topicTermCounts, Vector topicSums, double eta, double alpha,
-    String[] dictionary) {
-    this(topicTermCounts, topicSums, eta, alpha, dictionary, 1);
+    String[] dictionary, double modelWeight) {
+    this(topicTermCounts, topicSums, eta, alpha, dictionary, 1, modelWeight);
   }
 
   public TopicModel(Matrix topicTermCounts, double eta, double alpha, String[] dictionary,
-      int numThreads) {
-    this(topicTermCounts, getRowSums(topicTermCounts), eta, alpha, dictionary, numThreads);
+      int numThreads, double modelWeight) {
+    this(topicTermCounts, getRowSums(topicTermCounts),
+        eta, alpha, dictionary, numThreads, modelWeight);
   }
 
   public TopicModel(Matrix topicTermCounts, Vector topicSums, double eta, double alpha,
-    String[] dictionary, int numThreads) {
+    String[] dictionary, int numThreads, double modelWeight) {
     this.dictionary = dictionary;
     this.topicTermCounts = topicTermCounts;
     this.topicSums = topicSums;
@@ -95,6 +96,12 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     this.alpha = alpha;
     this.sampler = new Sampler(new Random(1234));
     this.numThreads = numThreads;
+    if(modelWeight != 1) {
+      topicSums.assign(Functions.mult(modelWeight));
+      for(int x = 0; x < numTopics; x++) {
+        topicTermCounts.getRow(x).assign(Functions.mult(modelWeight));
+      }
+    }
     initializeThreadPool();
   }
 
@@ -130,7 +137,7 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
   }
 
   private static Pair<Matrix,Vector> randomMatrix(int numTopics, int numTerms, Random random) {
-    Matrix topicTermCounts = new SparseRowMatrix(new int[]{numTopics, numTerms}, true);
+    Matrix topicTermCounts = new DenseMatrix(numTopics, numTerms);
     Vector topicSums = new DenseVector(numTopics);
     if(random != null) {
       for(int x = 0; x < numTopics; x++) {
@@ -297,6 +304,31 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
         termTopicDist.getRow(x).set(e.index(), p);
       }
     }
+  }
+
+  /**
+   * sum_x sum_a (c_ai * log(p(x|i) * p(a|x)))
+   * @param document
+   * @param docTopics
+   * @return
+   */
+  public double perplexity(Vector document, Vector docTopics) {
+    double perplexity = 0;
+    double norm = docTopics.norm(1) + (docTopics.size() * alpha);
+    Iterator<Vector.Element> it = document.iterateNonZero();
+    while(it.hasNext()) {
+      Vector.Element e = it.next();
+      int term = e.index();
+      double prob = 0;
+      for(int x = 0; x < numTopics; x++) {
+        double d = (docTopics.get(x) + alpha) / norm;
+        double p = d * (topicTermCounts.getRow(x).get(term) + eta)
+                   / (topicSums.get(x) + eta * numTerms);
+        prob += p;
+      }
+      perplexity += e.get() * Math.log(prob);
+    }
+    return perplexity;
   }
 
   private void normalizeByTopic(Matrix perTopicSparseDistributions) {

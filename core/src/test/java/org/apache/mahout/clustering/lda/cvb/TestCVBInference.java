@@ -90,7 +90,7 @@ public class TestCVBInference extends MahoutTestCase {
       }
       topicSums.set(x, model.getRow(x).norm(1));
     }
-    return new TopicModel(model, topicSums, 0, 0, null);
+    return new TopicModel(model, topicSums, 0, 0, null, 1);
   }
 
   private Vector generateRandomDistribution() {
