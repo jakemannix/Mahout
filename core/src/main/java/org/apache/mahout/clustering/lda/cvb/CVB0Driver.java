@@ -1,5 +1,9 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import com.google.common.base.Function;
+import com.google.common.base.Joiner;
+import com.google.common.collect.Collections2;
+import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileStatus;
@@ -18,16 +22,20 @@ import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
+import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
+import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterable;
 import org.apache.mahout.common.mapreduce.VectorSumReducer;
 import org.apache.mahout.math.VectorWritable;
+import org.apache.mahout.math.stats.entropy.DoubleSumReducer;
 import org.apache.mahout.vectorizer.SparseVectorsFromSequenceFiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.List;
 
 /**
  * Usage: <code>./bin/mahout cvb <i>options</i></code>
@@ -186,11 +194,16 @@ public class CVB0Driver extends AbstractJob {
                ? "" : "p(topic|docId) will be stored " + docTopicOutputPath.toString() + "\n";
     log.info(infoString);
 
-    double perplexity = 0;
-    double previousPerplexity = Integer.MAX_VALUE;
+    List<Double> perplexities = Lists.newArrayList();
     int iterationNumber = getCurrentIterationNumber(conf, topicModelStateTempPath);
     if (iterationNumber > maxIterations) {
       iterationNumber = maxIterations;
+    }
+    for(int i = 0; i < iterationNumber; i++) {
+      double perplexity = readPerplexity(topicModelStateTempPath, i);
+      if(!Double.isNaN(perplexity)) {
+        perplexities.add(perplexity);
+      }
     }
     conf.set(NUM_TOPICS, String.valueOf(numTopics));
     conf.set(NUM_TERMS, String.valueOf(numTerms));
@@ -201,21 +214,28 @@ public class CVB0Driver extends AbstractJob {
     conf.set(NUM_UPDATE_THREADS, String.valueOf(numUpdateThreads));
     conf.set(MAX_ITERATIONS_PER_DOC, String.valueOf(maxItersPerDoc));
     conf.set(MODEL_WEIGHT, String.valueOf(1)); // TODO:
+    double modelWeight = -1;
     long startTime = System.currentTimeMillis();
-    while(iterationNumber < maxIterations && previousPerplexity - perplexity > convergenceDelta) {
+    while(iterationNumber < maxIterations && (perplexities.size() > 1 ||
+          rateOfChange(perplexities) > convergenceDelta)) {
       iterationNumber++;
       log.info("About to run iteration {} of {}", iterationNumber, maxIterations);
       Path modelInputPath = modelPath(topicModelStateTempPath, iterationNumber - 1);
       Path modelOutputPath = modelPath(topicModelStateTempPath, iterationNumber);
       runIteration(conf, inputPath, modelInputPath, modelOutputPath, iterationNumber, maxIterations);
+      if(modelWeight < 0) {
+        modelWeight = calculateModelWeight(conf, modelOutputPath);
+      }
       if(testFraction > 0 && iterationNumber % iterationBlockSize == 0) {
-        previousPerplexity = perplexity;
-        perplexity = calculatePerplexity(conf, modelOutputPath);
-        log.info("Current perplexity = " + perplexity);
+        perplexities.add(calculatePerplexity(conf, modelOutputPath, iterationNumber) / modelWeight);
+        log.info("Current perplexity = " + perplexities.get(perplexities.size() - 1));
+        log.info("p_" + iterationNumber + " - p_" + (iterationNumber-iterationBlockSize) +
+                 " / p_0 = " + rateOfChange(perplexities) + ".  target: " + convergenceDelta);
       }
     }
     log.info("Completed {} iterations in {} seconds", iterationNumber,
         (System.currentTimeMillis() - startTime)/1000);
+    log.info("Perplexities: (" + Joiner.on(", ").join(perplexities) + ")");
     Path finalIterationData = modelPath(topicModelStateTempPath, iterationNumber);
     Job docInferenceJob = docTopicOutputPath != null
         ? writeDocTopicInference(conf, inputPath, finalIterationData, docTopicOutputPath)
@@ -226,32 +246,53 @@ public class CVB0Driver extends AbstractJob {
     return 0;
   }
 
-  private double calculatePerplexity(Configuration conf, Path stage1output) throws IOException,
+  private double rateOfChange(List<Double> perplexities) {
+    int sz = perplexities.size();
+    if(sz < 2) {
+      return 1;
+    }
+    return Math.abs(perplexities.get(sz - 1) - perplexities.get(sz - 2)) / perplexities.get(0);
+  }
+
+  private double calculatePerplexity(Configuration conf, Path stage1output, int iteration)
+      throws IOException,
       ClassNotFoundException, InterruptedException {
     String jobName = "Calculating perplexity for " + stage1output;
     log.info("About to run: " + jobName);
     Job job = new Job(conf, jobName);
-    job.setMapperClass(PerplexityCheckingMapper.class);
-    job.setReducerClass(PerplexityCheckingReducer.class);
+    job.setJarByClass(CachingCVB0PerplexityMapper.class);
+    job.setMapperClass(CachingCVB0PerplexityMapper.class);
+    job.setReducerClass(DoubleSumReducer.class);
+    job.setCombinerClass(DoubleSumReducer.class);
     job.setInputFormatClass(SequenceFileInputFormat.class);
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     job.setOutputKeyClass(NullWritable.class);
     job.setOutputValueClass(DoubleWritable.class);
     FileInputFormat.addInputPath(job, stage1output);
-    Path outputPath = new Path(stage1output.getParent(), "perplexity");
+    Path outputPath = perplexityPath(stage1output.getParent(), iteration);
+    HadoopUtil.delete(conf, outputPath);
     FileOutputFormat.setOutputPath(job, outputPath);
     HadoopUtil.delete(conf, outputPath);
     job.setJarByClass(PerplexityCheckingMapper.class);
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException("Failed to calculate perplexity for: " + stage1output);
     }
+    return readPerplexity(stage1output.getParent(), iteration);
+  }
+
+  private double readPerplexity(Path topicModelStateTemp, int iteration) throws IOException {
+    Path perplexityPath = perplexityPath(topicModelStateTemp, iteration);
     double perplexity = 0;
-    FileSystem fs = FileSystem.get(conf);
-    FileStatus[] statuses = fs.listStatus(outputPath, PathFilters.partFilter());
+    FileSystem fs = FileSystem.get(getConf());
+    if(!fs.exists(perplexityPath)) {
+      log.warn("Perplexity path " + perplexityPath + " does not exist, returning NaN");
+      return Double.NaN;
+    }
+    FileStatus[] statuses = fs.listStatus(perplexityPath, PathFilters.partFilter());
     for(FileStatus status : statuses) {
       log.info("Reading perplexity from: " + status.getPath());
       int i = 0;
-      SequenceFile.Reader reader = new SequenceFile.Reader(fs, status.getPath(), conf);
+      SequenceFile.Reader reader = new SequenceFile.Reader(fs, status.getPath(), getConf());
       DoubleWritable d = new DoubleWritable();
       while(reader.next(NullWritable.get(), d)) {
         perplexity += d.get();
@@ -260,6 +301,7 @@ public class CVB0Driver extends AbstractJob {
       log.info("Read " + i + " perplexity values");
     }
     return perplexity;
+
   }
 
   private Job writeDocTopicInference(Configuration conf, Path corpus, Path modelInput, Path output)
@@ -296,6 +338,10 @@ public class CVB0Driver extends AbstractJob {
 
   public static Path stage1OutputPath(Path topicModelStateTempPath, int iterationNumber) {
     return new Path(topicModelStateTempPath, "tmp-" + iterationNumber);
+  }
+
+  public static Path perplexityPath(Path topicModelStateTempPath, int iterationNumber) {
+    return new Path(topicModelStateTempPath, "perplexity-" + iterationNumber);
   }
 
   private int getCurrentIterationNumber(Configuration config, Path modelTempDir)
@@ -345,9 +391,24 @@ public class CVB0Driver extends AbstractJob {
     }
   }
 
-  private static class TopicTermOutputReducer extends UniquingReducer<CVBKey, CVBTuple> {}
-
-  private static class DocTopicOutputReducer extends UniquingReducer<IntWritable, VectorWritable> {}
+  private double calculateModelWeight(Configuration conf, Path modelBasePath) throws IOException {
+    Path[] modelPaths = Collections2.transform(Lists.<FileStatus>newArrayList(
+        FileSystem.get(conf).listStatus(modelBasePath, PathFilters.partFilter())),
+        new Function<FileStatus, Path>() {
+          @Override public Path apply(FileStatus fileStatus) {
+            return fileStatus.getPath();
+          }
+    }).toArray(new Path[0]);
+    
+    double weight = 0;
+    for(Path modelPath : modelPaths) {
+      for(Pair<IntWritable, VectorWritable> row :
+          new SequenceFileIterable<IntWritable, VectorWritable>(modelPath, true, conf)) {
+        weight += row.getSecond().get().norm(1);
+      }
+    }
+    return weight;
+  }
 
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new Configuration(), new CVB0Driver(), args);

@@ -64,6 +64,20 @@ public class ModelTrainer {
     train(matrix, docTopicCounts, 1);
   }
 
+  public double calculatePerplexity(VectorIterable matrix, VectorIterable docTopicCounts) {
+    Iterator<MatrixSlice> docIterator = matrix.iterator();
+    Iterator<MatrixSlice> docTopicIterator = docTopicCounts.iterator();
+    double perplexity = 0;
+    double matrixNorm = 0;
+    while(docIterator.hasNext() && docTopicIterator.hasNext()) {
+      Vector document = docIterator.next().vector();
+      Vector topicDist = docTopicIterator.next().vector();
+      perplexity += readModel.perplexity(document, topicDist);
+      matrixNorm += document.norm(1);
+    }
+    return perplexity / matrixNorm;
+  }
+
   public void train(VectorIterable matrix, VectorIterable docTopicCounts, int numDocTopicIters) {
     start();
     Iterator<MatrixSlice> docIterator = matrix.iterator();
@@ -108,8 +122,7 @@ public class ModelTrainer {
           }
         }
       }
-    }
-    stop();
+    }     stop();
   }
 
   public void batchTrain(Map<Vector, Vector> batch, boolean update, int numDocTopicsIters) {
@@ -146,6 +159,13 @@ public class ModelTrainer {
     }
   }
 
+  public double calculatePerplexity(Vector document, Vector docTopicCounts, int numDocTopicIters) {
+    TrainerRunnable runner =  new TrainerRunnable(readModel,
+            null, document, docTopicCounts, new SparseRowMatrix(new int[]{
+            numTopics, numTerms}, true), numDocTopicIters);
+    return runner.call();
+  }
+
   public void stop() {
     long startTime = System.nanoTime();
     log.info("Initiating stopping of training threadpool");
@@ -173,7 +193,7 @@ public class ModelTrainer {
     readModel.persist(outputPath, true);
   }
 
-  private static class TrainerRunnable implements Runnable, Callable<Boolean> {
+  private static class TrainerRunnable implements Runnable, Callable<Double> {
     private final TopicModel readModel;
     private final TopicModel writeModel;
     private final Vector document;
@@ -204,9 +224,9 @@ public class ModelTrainer {
       }
     }
 
-    @Override public Boolean call() throws Exception {
+    @Override public Double call() {
       run();
-      return true;
+      return readModel.perplexity(document, docTopics);
     }
   }
 }

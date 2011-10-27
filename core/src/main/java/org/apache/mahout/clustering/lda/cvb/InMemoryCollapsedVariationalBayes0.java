@@ -170,35 +170,36 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   public double iterateUntilConvergence(double minFractionalErrorChange, int maxIterations, int minIter) {
     double fractionalChange = Double.MAX_VALUE;
     int iter = 0;
-    double oldError = 0;
+    double oldPerplexity = 0;
     while(iter < minIter) {
       if(verbose) {
         log.info(modelTrainer.getReadModel().toString());
       }
       trainDocuments();
       log.info("iteration " + iter + " complete");
-      oldError = 0; //error();
-      log.info(oldError + " = error");
+      oldPerplexity = modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts);
+      log.info(oldPerplexity + " = perplexity");
       iter++;
     }
-    double newError = 0;
+    double newPerplexity = 0;
     while(iter < maxIterations && fractionalChange > minFractionalErrorChange) {
       trainDocuments();
       log.info("iteration " + iter + " complete");
-      newError = error();
+      newPerplexity = modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts);
+      log.info(newPerplexity + " = perplexity");
       iter++;
-      fractionalChange = Math.abs(newError - oldError) / oldError;
+      fractionalChange = Math.abs(newPerplexity - oldPerplexity) / oldPerplexity;
       log.info(fractionalChange + " = fractionalChange");
-      oldError = newError;
+      oldPerplexity = newPerplexity;
     }
     if(iter < maxIterations) {
       log.info(String.format("Converged! fractional error change: %f, error %f",
-          fractionalChange, newError));
+          fractionalChange, newPerplexity));
     } else {
       log.info(String.format("Reached max iteration count (%d), fractional error change: %f, error: %f",
-          maxIterations, fractionalChange, newError));
+          maxIterations, fractionalChange, newPerplexity));
     }
-    return newError;
+    return newPerplexity;
   }
 
   public void writeModel(Path outputPath) throws IOException {
@@ -264,7 +265,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
     Option convergenceOpt = obuilder.withLongName("convergence").withRequired(false).withArgument(abuilder
         .withName("convergence").withMinimum(1).withMaximum(1).withDefault("0.0").create())
-        .withDescription("Fractional rate of error to consider convergence").withShortName("c").create();
+        .withDescription("Fractional rate of perplexity to consider convergence").withShortName("c").create();
 
     Option reInferDocTopicsOpt = obuilder.withLongName("reInferDocTopics").withRequired(false)
         .withArgument(abuilder.withName("reInferDocTopics").withMinimum(1).withMaximum(1)
@@ -315,7 +316,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       double alpha = Double.parseDouble((String)cmdLine.getValue(alphaOpt));
       double eta = Double.parseDouble((String)cmdLine.getValue(etaOpt));
       int maxIterations = Integer.parseInt((String)cmdLine.getValue(maxIterOpt));
-      int burnInIterations = (Integer) cmdLine.getValue(burnInOpt);
+      int burnInIterations = (Integer)cmdLine.getValue(burnInOpt);
       double minFractionalErrorChange = Double.parseDouble((String) cmdLine.getValue(convergenceOpt));
       int numTrainThreads = Integer.parseInt((String)cmdLine.getValue(numTrainThreadsOpt));
       int numUpdateThreads = Integer.parseInt((String)cmdLine.getValue(numUpdateThreadsOpt));
@@ -344,7 +345,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
       start = System.nanoTime();
       cvb0.setVerbose(verbose);
-      double error = cvb0.iterateUntilConvergence(minFractionalErrorChange, maxIterations, burnInIterations);
+      double perplexity = cvb0.iterateUntilConvergence(minFractionalErrorChange, maxIterations,
+          burnInIterations);
       logTime("total training time", System.nanoTime() - start);
 
       if(reInferDocTopics.equalsIgnoreCase("randstart")) {

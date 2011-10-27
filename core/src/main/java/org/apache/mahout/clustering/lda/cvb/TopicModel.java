@@ -328,7 +328,7 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
       }
       perplexity += e.get() * Math.log(prob);
     }
-    return perplexity;
+    return -perplexity;
   }
 
   private void normalizeByTopic(Matrix perTopicSparseDistributions) {
