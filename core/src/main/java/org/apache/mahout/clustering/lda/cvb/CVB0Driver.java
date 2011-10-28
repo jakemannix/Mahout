@@ -95,6 +95,7 @@ public class CVB0Driver extends AbstractJob {
   public static final String NUM_UPDATE_THREADS = "num_update_threads";
   public static final String MAX_ITERATIONS_PER_DOC = "max_doc_topic_iters";
   public static final String MODEL_WEIGHT = "prev_iter_mult";
+  public static final String CONVERGENCE_TARGET = "convergence";
 
   @Override public int run(String[] args) throws Exception {
     addInputOption();
@@ -213,10 +214,11 @@ public class CVB0Driver extends AbstractJob {
     conf.set(NUM_TRAIN_THREADS, String.valueOf(numTrainThreads));
     conf.set(NUM_UPDATE_THREADS, String.valueOf(numUpdateThreads));
     conf.set(MAX_ITERATIONS_PER_DOC, String.valueOf(maxItersPerDoc));
+    conf.set(CONVERGENCE_TARGET, String.valueOf(convergenceDelta));
     conf.set(MODEL_WEIGHT, String.valueOf(1)); // TODO:
     double modelWeight = -1;
     long startTime = System.currentTimeMillis();
-    while(iterationNumber < maxIterations && (perplexities.size() > 1 ||
+    while(iterationNumber < maxIterations && (perplexities.size() < 2 ||
           rateOfChange(perplexities) > convergenceDelta)) {
       iterationNumber++;
       log.info("About to run iteration {} of {}", iterationNumber, maxIterations);

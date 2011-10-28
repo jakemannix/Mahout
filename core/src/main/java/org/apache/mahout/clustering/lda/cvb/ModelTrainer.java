@@ -8,6 +8,7 @@ import org.apache.mahout.math.MatrixSlice;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorIterable;
+import org.apache.mahout.math.list.DoubleArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +34,8 @@ public class ModelTrainer {
   private int numTrainThreads;
   private boolean isReadWrite;
 
+  private volatile double totalPerplexity;
+
   public ModelTrainer(TopicModel model, int numTrainThreads, int numTopics, int numTerms) {
     this(model, model, numTrainThreads, numTopics, numTerms);
   }
@@ -45,10 +48,15 @@ public class ModelTrainer {
     this.numTopics = numTopics;
     this.numTerms = numTerms;
     isReadWrite = (initialReadModel == initialWriteModel);
+    totalPerplexity = 0;
   }
 
   public TopicModel getReadModel() {
     return readModel;
+  }
+
+  public double getTotalPerplexity() {
+    return totalPerplexity;
   }
 
   public void start() {
@@ -60,11 +68,10 @@ public class ModelTrainer {
     threadPool.prestartAllCoreThreads();
   }
 
-  public void train(VectorIterable matrix, VectorIterable docTopicCounts) {
-    train(matrix, docTopicCounts, 1);
-  }
-
   public double calculatePerplexity(VectorIterable matrix, VectorIterable docTopicCounts) {
+    if(totalPerplexity > 0) {
+      return totalPerplexity;
+    }
     Iterator<MatrixSlice> docIterator = matrix.iterator();
     Iterator<MatrixSlice> docTopicIterator = docTopicCounts.iterator();
     double perplexity = 0;
@@ -78,7 +85,13 @@ public class ModelTrainer {
     return perplexity / matrixNorm;
   }
 
-  public void train(VectorIterable matrix, VectorIterable docTopicCounts, int numDocTopicIters) {
+  public void train(VectorIterable matrix, VectorIterable docTopicCounts, double convergence) {
+    train(matrix, docTopicCounts, 1, convergence);
+  }
+
+  public void train(VectorIterable matrix, VectorIterable docTopicCounts, int maxDocTopicIters,
+      double convergence) {
+    totalPerplexity = 0;
     start();
     Iterator<MatrixSlice> docIterator = matrix.iterator();
     Iterator<MatrixSlice> docTopicIterator = docTopicCounts.iterator();
@@ -99,7 +112,7 @@ public class ModelTrainer {
             numTokensInBatch += document.getNumNondefaultElements();
           }
         } else {
-          batchTrain(batch, true, numDocTopicIters);
+          batchTrain(batch, true, maxDocTopicIters, convergence);
           long time = System.nanoTime();
           log.debug("trained {} docs with {} tokens, start time {}, end time {}",
               new Object[] {numTrainThreads, numTokensInBatch, batchStart, time});
@@ -108,7 +121,7 @@ public class ModelTrainer {
         }
       } else {
         long start = System.nanoTime();
-        train(document, topicDist, true, numDocTopicIters);
+        train(document, topicDist, true, maxDocTopicIters, convergence);
         if(log.isDebugEnabled()) {
           times[i % times.length] =
               ((System.nanoTime() - start)/(1e6 * document.getNumNondefaultElements()));
@@ -122,17 +135,19 @@ public class ModelTrainer {
           }
         }
       }
-    }     stop();
+    }
+    stop();
   }
 
-  public void batchTrain(Map<Vector, Vector> batch, boolean update, int numDocTopicsIters) {
+  public void batchTrain(Map<Vector, Vector> batch, boolean update, int numDocTopicsIters,
+      double convergence) {
     while(true) {
       try {
         List<TrainerRunnable> runnables = Lists.newArrayList();
         for(Map.Entry<Vector, Vector> entry : batch.entrySet()) {
           runnables.add(new TrainerRunnable(readModel, null, entry.getKey(),
               entry.getValue(), new SparseRowMatrix(new int[]{numTopics, numTerms}, true),
-              numDocTopicsIters));
+              numDocTopicsIters, convergence));
         }
         threadPool.invokeAll(runnables);
         if(update) {
@@ -146,12 +161,13 @@ public class ModelTrainer {
     }
   }
 
-  public void train(Vector document, Vector docTopicCounts, boolean update, int numDocTopicIters) {
+  public void train(Vector document, Vector docTopicCounts, boolean update, int numDocTopicIters,
+      double convergence) {
     while(true) {
       try {
         workQueue.put(new TrainerRunnable(readModel,
             update ? writeModel : null, document, docTopicCounts, new SparseRowMatrix(new int[]{
-            numTopics, numTerms}, true), numDocTopicIters));
+            numTopics, numTerms}, true), numDocTopicIters, convergence));
         return;
       } catch (InterruptedException e) {
         log.warn("Interrupted waiting to submit document to work queue: " + document, e);
@@ -164,6 +180,11 @@ public class ModelTrainer {
             null, document, docTopicCounts, new SparseRowMatrix(new int[]{
             numTopics, numTerms}, true), numDocTopicIters);
     return runner.call();
+  }
+
+  public static double pctDelta(DoubleArrayList list) {
+    int sz = list.size();
+    return Math.abs((list.get(sz - 1) - list.get(sz - 2)) / list.get(0));
   }
 
   public void stop() {
@@ -193,28 +214,46 @@ public class ModelTrainer {
     readModel.persist(outputPath, true);
   }
 
-  private static class TrainerRunnable implements Runnable, Callable<Double> {
+  private class TrainerRunnable implements Runnable, Callable<Double> {
     private final TopicModel readModel;
     private final TopicModel writeModel;
     private final Vector document;
     private final Vector docTopics;
     private final Matrix docTopicModel;
-    private final int numDocTopicIters;
+    private final int maxDocTopicIters;
+    private final double convergence;
+
+    private double finalPerplexity = -1;
 
     public TrainerRunnable(TopicModel readModel, TopicModel writeModel, Vector document,
-        Vector docTopics, Matrix docTopicModel, int numDocTopicIters) {
+        Vector docTopics, Matrix docTopicModel, int maxDocTopicIters) {
+      this(readModel, writeModel, document, docTopics, docTopicModel, maxDocTopicIters, Double.NaN);
+    }
+
+    public TrainerRunnable(TopicModel readModel, TopicModel writeModel, Vector document,
+        Vector docTopics, Matrix docTopicModel, int maxDocTopicIters, double convergence) {
       this.readModel = readModel;
       this.writeModel = writeModel;
       this.document = document;
       this.docTopics = docTopics;
       this.docTopicModel = docTopicModel;
-      this.numDocTopicIters = numDocTopicIters;
+      this.maxDocTopicIters = maxDocTopicIters;
+      this.convergence = convergence  / 10;
     }
 
     @Override public void run() {
-      for(int i = 0; i < numDocTopicIters; i++) {
+      DoubleArrayList perplexities = null;
+      if(!Double.isNaN(convergence)) {
+        perplexities = new DoubleArrayList(maxDocTopicIters);
+        perplexities.add(readModel.perplexity(document, docTopics));
+      }
+      int i = 0;
+      while(!converged(i++, perplexities)) {
         // synchronous read-only call:
         readModel.trainDocTopicModel(document, docTopics, docTopicModel);
+        if(!Double.isNaN(convergence)) {
+          perplexities.add(readModel.perplexity(document, docTopics));
+        }
       }
       if(writeModel != null) {
         // parallel call which is read-only on the docTopicModel, and write-only on the writeModel
@@ -222,11 +261,28 @@ public class ModelTrainer {
         // to write work queues
         writeModel.update(docTopicModel);
       }
+      if(perplexities != null) {
+        finalPerplexity = perplexities.get(perplexities.size() - 1);
+        totalPerplexity += finalPerplexity;
+      }
+    }
+
+    private boolean converged(int i, DoubleArrayList perplexities) {
+      if(i > maxDocTopicIters) {
+        return true;
+      }
+      if(perplexities == null) {
+        return false;
+      }
+      if(i < 3) {
+        return false;
+      }
+      return pctDelta(perplexities) < convergence;
     }
 
     @Override public Double call() {
       run();
-      return readModel.perplexity(document, docTopics);
+      return finalPerplexity > 0 ? finalPerplexity : readModel.perplexity(document, docTopics);
     }
   }
 }

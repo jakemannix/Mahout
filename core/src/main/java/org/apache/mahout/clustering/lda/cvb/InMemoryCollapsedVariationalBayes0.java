@@ -1,6 +1,7 @@
 package org.apache.mahout.clustering.lda.cvb;
 
 import com.google.common.base.Charsets;
+import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.io.Resources;
@@ -30,6 +31,7 @@ import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
+import org.apache.mahout.math.list.DoubleArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -139,8 +141,12 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   }
 
   public void trainDocuments() {
+    trainDocuments(Double.NaN);
+  }
+
+  public void trainDocuments(double convergence) {
     long start = System.nanoTime();
-    modelTrainer.train(corpusWeights, docTopicCounts);
+    modelTrainer.train(corpusWeights, docTopicCounts, convergence);
     logTime("train documents", System.nanoTime() - start);
   }
 
@@ -167,39 +173,40 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     return error / totalCorpusWeight;
   }
 
-  public double iterateUntilConvergence(double minFractionalErrorChange, int maxIterations, int minIter) {
+  public double iterateUntilConvergence(double convergence, int maxIter, int minIter) {
     double fractionalChange = Double.MAX_VALUE;
     int iter = 0;
-    double oldPerplexity = 0;
+    DoubleArrayList perplexities = new DoubleArrayList(maxIter);
     while(iter < minIter) {
       if(verbose) {
         log.info(modelTrainer.getReadModel().toString());
       }
-      trainDocuments();
+      trainDocuments(convergence);
       log.info("iteration " + iter + " complete");
-      oldPerplexity = modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts);
-      log.info(oldPerplexity + " = perplexity");
+      perplexities.add(
+          modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts) / totalCorpusWeight);
+      log.info(perplexities.get(perplexities.size() - 1) + " = perplexity");
       iter++;
     }
-    double newPerplexity = 0;
-    while(iter < maxIterations && fractionalChange > minFractionalErrorChange) {
-      trainDocuments();
+    while(iter < maxIter && fractionalChange > convergence) {
+      trainDocuments(convergence);
       log.info("iteration " + iter + " complete");
-      newPerplexity = modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts);
-      log.info(newPerplexity + " = perplexity");
+      perplexities.add(
+          modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts) / totalCorpusWeight);
+      log.info(perplexities.get(perplexities.size() - 1) + " = perplexity");
       iter++;
-      fractionalChange = Math.abs(newPerplexity - oldPerplexity) / oldPerplexity;
+      fractionalChange = ModelTrainer.pctDelta(perplexities);
       log.info(fractionalChange + " = fractionalChange");
-      oldPerplexity = newPerplexity;
     }
-    if(iter < maxIterations) {
+    if(iter < maxIter) {
       log.info(String.format("Converged! fractional error change: %f, error %f",
-          fractionalChange, newPerplexity));
+          fractionalChange, perplexities.get(perplexities.size() - 1)));
     } else {
       log.info(String.format("Reached max iteration count (%d), fractional error change: %f, error: %f",
-          maxIterations, fractionalChange, newPerplexity));
+          maxIter, fractionalChange, perplexities.get(perplexities.size() - 1)));
     }
-    return newPerplexity;
+    log.info("Perplexities were: (" + Joiner.on(" ").join(perplexities.toList()) + ")");
+    return perplexities.get(perplexities.size() - 1);
   }
 
   public void writeModel(Path outputPath) throws IOException {

@@ -23,6 +23,7 @@ public class CachingCVB0Mapper
   protected ModelTrainer modelTrainer;
   protected int maxIters;
   protected int numTopics;
+  protected double convergence;
 
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
@@ -36,6 +37,7 @@ public class CachingCVB0Mapper
     int numUpdateThreads = conf.getInt(CVB0Driver.NUM_UPDATE_THREADS, 1);
     int numTrainThreads = conf.getInt(CVB0Driver.NUM_TRAIN_THREADS, 4);
     maxIters = conf.getInt(CVB0Driver.MAX_ITERATIONS_PER_DOC, 10);
+    convergence = conf.getFloat(CVB0Driver.CONVERGENCE_TARGET, 0);
     double modelWeight = conf.getFloat(CVB0Driver.MODEL_WEIGHT, 1f);
     URI[] localFiles = DistributedCache.getCacheFiles(conf);
     Path[] localPaths = null;
@@ -64,7 +66,7 @@ public class CachingCVB0Mapper
       throws IOException, InterruptedException{
     /* where to get docTopics? */
     Vector topicVector = new DenseVector(new double[numTopics]).assign(1/numTopics);
-    modelTrainer.train(document.get(), topicVector, true, maxIters);
+    modelTrainer.train(document.get(), topicVector, true, maxIters, convergence);
   }
 
   @Override
