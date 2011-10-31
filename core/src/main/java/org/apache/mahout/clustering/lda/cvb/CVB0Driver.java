@@ -192,10 +192,8 @@ public class CVB0Driver extends AbstractJob {
     log.info(infoString);
 
     List<Double> perplexities = Lists.newArrayList();
-    int iterationNumber = getCurrentIterationNumber(conf, topicModelStateTempPath);
-    if (iterationNumber > maxIterations) {
-      iterationNumber = maxIterations;
-    }
+    int iterationNumber = getCurrentIterationNumber(conf, topicModelStateTempPath, maxIterations);
+    log.info("Current iteration number: {}", iterationNumber);
     for(int i = 0; i < iterationNumber; i++) {
       double perplexity = readPerplexity(topicModelStateTempPath, i);
       if(!Double.isNaN(perplexity)) {
@@ -340,12 +338,12 @@ public class CVB0Driver extends AbstractJob {
     return new Path(topicModelStateTempPath, "perplexity-" + iterationNumber);
   }
 
-  private int getCurrentIterationNumber(Configuration config, Path modelTempDir)
+  private int getCurrentIterationNumber(Configuration config, Path modelTempDir, int maxIterations)
       throws IOException {
     FileSystem fs = FileSystem.get(config);
-    int iterationNumber = 0;
+    int iterationNumber = 1;
     Path iterationPath = modelPath(modelTempDir, iterationNumber);
-    while(fs.exists(iterationPath)) {
+    while(fs.exists(iterationPath) && iterationNumber <= maxIterations) {
       log.info("found previous state: " + iterationPath);
       iterationNumber++;
       iterationPath = modelPath(modelTempDir, iterationNumber);
