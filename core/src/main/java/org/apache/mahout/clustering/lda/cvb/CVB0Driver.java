@@ -106,7 +106,7 @@ public class CVB0Driver extends AbstractJob {
     addOption(NUM_TOPICS, "k", "Number of topics to learn", true);
     addOption(NUM_TERMS, "nt", "Vocabulary size", false);
     addOption(DOC_TOPIC_SMOOTHING, "a", "Smoothing for document/topic distribution", "0.1");
-    addOption(TERM_TOPIC_SMOOTHING, "e", "Smoothing for topic/term distribution, 0.1");
+    addOption(TERM_TOPIC_SMOOTHING, "e", "Smoothing for topic/term distribution", "0.1");
     addOption(DICTIONARY, "dict", "Path to term-dictionary file(s) (glob expression supported)",
         false);
     addOption(DOC_TOPIC_OUTPUT, "dt", "Output path for the training doc/topic distribution",
@@ -115,12 +115,12 @@ public class CVB0Driver extends AbstractJob {
         false);
     addOption(ITERATION_BLOCK_SIZE, "block", "Number of iterations per perplexity check", "10");
     addOption(RANDOM_SEED, "seed", "Random seed", false);
-    addOption(TEST_SET_PERCENTAGE, "tp", "% of data to hold out for testing", false);
+    addOption(TEST_SET_PERCENTAGE, "tp", "% of data to hold out for testing", "0");
     addOption(NUM_TRAIN_THREADS, "ntt", "number of threads per mapper to train with", "4");
     addOption(NUM_UPDATE_THREADS, "nut", "number of threads per mapper to update the model with",
         "1");
     addOption(MAX_ITERATIONS_PER_DOC, "mipd",
-        "max number of iterations per doc for p(topic|doc) learning", "100");
+        "max number of iterations per doc for p(topic|doc) learning", "10");
 
     if(parseArguments(args) == null) {
       return -1;
@@ -134,16 +134,13 @@ public class CVB0Driver extends AbstractJob {
     double convergenceDelta = Double.parseDouble(getOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION));
     double alpha = Double.parseDouble(getOption(DOC_TOPIC_SMOOTHING));
     double eta = Double.parseDouble(getOption(TERM_TOPIC_SMOOTHING));
-    int numTrainThreads = hasOption(NUM_TRAIN_THREADS) ?
-        Integer.parseInt(getOption(NUM_TRAIN_THREADS)) : 4;
-    int numUpdateThreads = hasOption(NUM_UPDATE_THREADS) ?
-        Integer.parseInt(getOption(NUM_UPDATE_THREADS)) : 1;
-    int maxItersPerDoc = hasOption(MAX_ITERATIONS_PER_DOC) ?
-        Integer.parseInt(getOption(MAX_ITERATIONS_PER_DOC)) : 10;
+    int numTrainThreads = Integer.parseInt(getOption(NUM_TRAIN_THREADS));
+    int numUpdateThreads = Integer.parseInt(getOption(NUM_UPDATE_THREADS));
+    int maxItersPerDoc = Integer.parseInt(getOption(MAX_ITERATIONS_PER_DOC));
     Path dictionaryPath = hasOption(DICTIONARY) ? new Path(getOption(DICTIONARY)) : null;
-    int numTerms = hasOption(DICTIONARY)
-                 ? getNumTerms(getConf(), dictionaryPath)
-                 : Integer.parseInt(getOption(NUM_TERMS));
+    int numTerms = hasOption(NUM_TERMS)
+                 ? Integer.parseInt(getOption(NUM_TERMS))
+                 : getNumTerms(getConf(), dictionaryPath);
     Path docTopicOutputPath = hasOption(DOC_TOPIC_OUTPUT) ? new Path(getOption(DOC_TOPIC_OUTPUT)) : null;
     Path modelTempPath = hasOption(MODEL_TEMP_DIR)
                        ? new Path(getOption(MODEL_TEMP_DIR))
@@ -273,7 +270,6 @@ public class CVB0Driver extends AbstractJob {
     HadoopUtil.delete(conf, outputPath);
     FileOutputFormat.setOutputPath(job, outputPath);
     HadoopUtil.delete(conf, outputPath);
-    job.setJarByClass(PerplexityCheckingMapper.class);
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException("Failed to calculate perplexity for: " + stage1output);
     }
@@ -399,7 +395,7 @@ public class CVB0Driver extends AbstractJob {
             return fileStatus.getPath();
           }
     }).toArray(new Path[0]);
-    
+
     double weight = 0;
     for(Path modelPath : modelPaths) {
       for(Pair<IntWritable, VectorWritable> row :
