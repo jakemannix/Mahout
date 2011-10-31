@@ -20,7 +20,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.apache.mahout</groupId>
   <artifactId>mahout</artifactId>
-  <version>0.6.1-sagemintblue-cvb0</version>
+  <version>0.6-hazen-cvb0nextgen_cleanup-1</version>
 
   <parent>
     <groupId>org.apache</groupId>
