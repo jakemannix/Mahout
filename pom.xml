@@ -134,6 +134,18 @@
       </dependency>
       
       <dependency>
+        <artifactId>mahout-io</artifactId>
+        <groupId>${project.groupId}</groupId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <version>${project.version}</version>
+        <artifactId>mahout-io</artifactId>
+        <type>test-jar</type>
+      </dependency>
+
+      <dependency>
         <artifactId>mahout-integration</artifactId>
         <groupId>${project.groupId}</groupId>
         <version>${project.version}</version>
@@ -616,6 +628,7 @@
     <module>buildtools</module>
     <module>math</module>
     <module>core</module>
+    <module>io</module>
     <module>integration</module>
     <module>examples</module>
     <module>distribution</module>

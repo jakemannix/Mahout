@@ -17,11 +17,11 @@
 
 package org.apache.mahout.math;
 
+import com.google.common.base.Preconditions;
+
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
-
-import com.google.common.base.Preconditions;
 
 /**
  * <p>Encodes signed and unsigned values using a common variable-length
