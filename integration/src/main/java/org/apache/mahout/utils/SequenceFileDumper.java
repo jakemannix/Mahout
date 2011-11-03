@@ -64,8 +64,8 @@ public final class SequenceFileDumper {
             withDescription("The number of chars of the asFormatString() to print").withShortName("b").create();
     Option countOpt = obuilder.withLongName("count").withRequired(false).
             withDescription("Report the count only").withShortName("c").create();
-    Option numItemsOpt = obuilder.withLongName("n").withRequired(false).withArgument(
-            abuilder.withName("numItems").withMinimum(1).withMaximum(1).create()).
+    Option numItemsOpt = obuilder.withLongName("numItems").withRequired(false).withArgument(
+            abuilder.withName("n").withMinimum(1).withMaximum(1).create()).
             withDescription("Output at most <n> key value pairs").withShortName("n").create();
     Option helpOpt = obuilder.withLongName("help").withDescription("Print out help").withShortName("h").create();
 
