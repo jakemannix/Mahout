@@ -57,7 +57,7 @@ import java.util.List;
  * <dd>Number of latent topics.</dd>
  * <dt>{@code --num_terms nt}</dt>
  * <dd>Number of unique features defined by input document vectors. If option {@code --dictionary}
- * is defined, this option is ignored.</dd>
+ * is defined and this option is unspecified, term count is calculated from dictionary.</dd>
  * <dt>{@code --topic_model_temp_dir path}</dt>
  * <dd>Path in which to store model state after each iteration.</dd>
  * <dt>{@code --maxIter i}</dt>
@@ -65,10 +65,12 @@ import java.util.List;
  * iteration states found beneath the path specified by option {@code --topic_model_temp_dir}, no
  * further iterations are performed. Instead, output topic-term and doc-topic distributions are
  * generated using data from the specified iteration.</dd>
+ * <dt>{@code --max_doc_topic_iters i}</dt>
+ * <dd>Maximum number of iterations per doc for p(topic|doc) learning. Defaults to {@code 10}.</dd>
  * <dt>{@code --doc_topic_smoothing a}</dt>
- * <dd>Smoothing for doc-topic distribution. Defaults to {@code 0.1}.</dd>
+ * <dd>Smoothing for doc-topic distribution. Defaults to {@code 0.0001}.</dd>
  * <dt>{@code --term_topic_smoothing e}</dt>
- * <dd>Smoothing for topic-term distribution. Defaults to {@code 0.1}.</dd>
+ * <dd>Smoothing for topic-term distribution. Defaults to {@code 0.0001}.</dd>
  * <dt>{@code --random_seed seed}</dt>
  * <dd>Integer seed for random number generation.</dd>
  * <dt>{@code --test_set_percentage p}</dt>
@@ -105,8 +107,8 @@ public class CVB0Driver extends AbstractJob {
 
     addOption(NUM_TOPICS, "k", "Number of topics to learn", true);
     addOption(NUM_TERMS, "nt", "Vocabulary size", false);
-    addOption(DOC_TOPIC_SMOOTHING, "a", "Smoothing for document/topic distribution", "0.1");
-    addOption(TERM_TOPIC_SMOOTHING, "e", "Smoothing for topic/term distribution", "0.1");
+    addOption(DOC_TOPIC_SMOOTHING, "a", "Smoothing for document/topic distribution", "0.0001");
+    addOption(TERM_TOPIC_SMOOTHING, "e", "Smoothing for topic/term distribution", "0.0001");
     addOption(DICTIONARY, "dict", "Path to term-dictionary file(s) (glob expression supported)",
         false);
     addOption(DOC_TOPIC_OUTPUT, "dt", "Output path for the training doc/topic distribution",
