@@ -30,6 +30,8 @@ import org.apache.commons.cli2.builder.GroupBuilder;
 import org.apache.commons.cli2.commandline.Parser;
 import org.apache.commons.cli2.util.HelpFormatter;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Writable;
 import org.apache.mahout.common.Pair;
@@ -84,8 +86,10 @@ public final class SequenceFileDumper {
       }
 
       if (cmdLine.hasOption(seqOpt)) {
-        Path path = new Path(cmdLine.getValue(seqOpt).toString());
         Configuration conf = new Configuration();
+        FileSystem fs = FileSystem.get(conf);
+        Path pathPattern = new Path(cmdLine.getValue(seqOpt).toString());
+        FileStatus[] inputPaths = fs.globStatus(pathPattern);
 
         Writer writer;
         if (cmdLine.hasOption(outputOpt)) {
@@ -94,39 +98,53 @@ public final class SequenceFileDumper {
           writer = new OutputStreamWriter(System.out);
         }
         try {
-          writer.append("Input Path: ").append(String.valueOf(path)).append('\n');
 
-          int sub = Integer.MAX_VALUE;
-          if (cmdLine.hasOption(substringOpt)) {
-            sub = Integer.parseInt(cmdLine.getValue(substringOpt).toString());
+          Long numItems = null;
+          if (cmdLine.hasOption(numItemsOpt)) {
+            numItems = Long.parseLong(cmdLine.getValue(numItemsOpt).toString());
+            writer.append("Max Items to dump: ").append(String.valueOf(numItems));
           }
-          boolean countOnly = cmdLine.hasOption(countOpt);
-          SequenceFileIterator<?, ?> iterator = new SequenceFileIterator<Writable, Writable>(path, true, conf);
-          writer.append("Key class: ").append(iterator.getKeyClass().toString());
-          writer.append(" Value Class: ").append(iterator.getValueClass().toString()).append('\n');
-          long count = 0;
-          if (countOnly) {
-            while (iterator.hasNext()) {
-              iterator.next();
-              count++;
+
+          long itemCount = 0;
+          for (FileStatus stat : inputPaths) {
+            if (numItems != null && numItems <= itemCount) {
+              break;
             }
-            writer.append("Count: ").append(String.valueOf(count)).append('\n');
-          } else {
-            long numItems = Long.MAX_VALUE;
-            if (cmdLine.hasOption(numItemsOpt)) {
-              numItems = Long.parseLong(cmdLine.getValue(numItemsOpt).toString());
-              writer.append("Max Items to dump: ").append(String.valueOf(numItems));
+            Path path = stat.getPath();
+
+            writer.append("Input Path: ").append(String.valueOf(path)).append('\n');
+
+            int sub = Integer.MAX_VALUE;
+            if (cmdLine.hasOption(substringOpt)) {
+              sub = Integer.parseInt(cmdLine.getValue(substringOpt).toString());
             }
-            while (iterator.hasNext() && count < numItems) {
-              Pair<?, ?> record = iterator.next();
-              writer.append("Key: ").append(record.getFirst().toString());
-              String str = record.getSecond().toString();
-              writer.append(": Value: ").append(str.length() > sub ? str.substring(0, sub) : str);
-              writer.write('\n');
-              count++;
+            boolean countOnly = cmdLine.hasOption(countOpt);
+            SequenceFileIterator<?, ?> iterator = new SequenceFileIterator<Writable, Writable>(path, true, conf);
+            writer.append("Key class: ").append(iterator.getKeyClass().toString());
+            writer.append(" Value Class: ").append(iterator.getValueClass().toString()).append('\n');
+            long count = 0;
+            if (countOnly) {
+              while (iterator.hasNext() && (numItems == null || itemCount < numItems)) {
+                iterator.next();
+                count++;
+                itemCount++;
+              }
+              writer.append("Count: ").append(String.valueOf(count)).append('\n');
+            } else {
+              while (iterator.hasNext() && (numItems == null || itemCount < numItems)) {
+                Pair<?, ?> record = iterator.next();
+                writer.append("Key: ").append(record.getFirst().toString());
+                String str = record.getSecond().toString();
+                writer.append(": Value: ").append(str.length() > sub ? str.substring(0, sub) : str);
+                writer.write('\n');
+                count++;
+                itemCount++;
+              }
+              writer.append("Count: ").append(String.valueOf(count)).append('\n');
             }
-            writer.append("Count: ").append(String.valueOf(count)).append('\n');
           }
+          writer.append("Total count: ").append(String.valueOf(itemCount)).append('\n');
+
         } finally {
           Closeables.closeQuietly(writer);
         }

@@ -30,6 +30,8 @@ import org.apache.commons.cli2.builder.GroupBuilder;
 import org.apache.commons.cli2.commandline.Parser;
 import org.apache.commons.cli2.util.HelpFormatter;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Writable;
@@ -91,15 +93,15 @@ public final class VectorDumper {
             .withShortName("sort").create();
     Option sizeOpt = obuilder.withLongName("sizeOnly").withRequired(false).
             withDescription("Dump only the size of the vector").withShortName("sz").create();
-    Option numItemsOpt = obuilder.withLongName("n").withRequired(false).withArgument(
-            abuilder.withName("numItems").withMinimum(1).withMaximum(1).create()).
-            withDescription("Output at most <n> key value pairs").withShortName("n").create();
+    Option numItemsOpt = obuilder.withLongName("numItems").withRequired(false).withArgument(
+            abuilder.withName("n").withMinimum(1).withMaximum(1).create()).
+            withDescription("Output at most <n> key value pairs").create();
     Option helpOpt = obuilder.withLongName("help").withDescription("Print out help").withShortName("h")
             .create();
 
     Group group = gbuilder.withName("Options").withOption(seqOpt).withOption(outputOpt).withOption(
             dictTypeOpt).withOption(dictOpt).withOption(csvOpt).withOption(vectorAsKeyOpt).withOption(
-            printKeyOpt).withOption(sortVectorsOpt).withOption(helpOpt).withOption(sizeOpt).create();
+            printKeyOpt).withOption(sortVectorsOpt).withOption(helpOpt).withOption(numItemsOpt).withOption(sizeOpt).create();
 
     try {
       Parser parser = new Parser();
@@ -112,9 +114,10 @@ public final class VectorDumper {
       }
 
       if (cmdLine.hasOption(seqOpt)) {
-        Path path = new Path(cmdLine.getValue(seqOpt).toString());
-        //System.out.println("Input Path: " + path); interferes with output?
         Configuration conf = new Configuration();
+        Path pathPattern = new Path(cmdLine.getValue(seqOpt).toString());
+        FileSystem fs = FileSystem.get(conf);
+        FileStatus[] inputPaths = fs.globStatus(pathPattern);
 
         String dictionaryType = "text";
         if (cmdLine.hasOption(dictTypeOpt)) {
@@ -157,16 +160,23 @@ public final class VectorDumper {
             }
             writer.write('\n');
           }
-          long numItems = Long.MAX_VALUE;
+          Long numItems = null;
           if (cmdLine.hasOption(numItemsOpt)) {
             numItems = Long.parseLong(cmdLine.getValue(numItemsOpt).toString());
             writer.append("#Max Items to dump: ").append(String.valueOf(numItems)).append('\n');
           }
+          long itemCount = 0;
+          int fileCount = 0;
+          for (FileStatus stat : inputPaths) {
+            if (numItems != null && numItems <= itemCount) {
+              break;
+            }
+            Path path = stat.getPath();
+            log.info("Processing file '{}' ({}/{})", new Object[]{path, ++fileCount, inputPaths.length});
           SequenceFileIterable<Writable, Writable> iterable = new SequenceFileIterable<Writable, Writable>(path, true, conf);
           Iterator<Pair<Writable,Writable>> iterator = iterable.iterator();
           long i = 0;
-          long count = 0;
-          while (iterator.hasNext() && count < numItems) {
+          while (iterator.hasNext() && (numItems == null || itemCount < numItems)) {
             Pair<Writable, Writable> record = iterator.next();
             Writable keyWritable = record.getFirst();
             Writable valueWritable = record.getSecond();
@@ -198,7 +208,8 @@ public final class VectorDumper {
               writer.write(fmtStr);
               writer.write('\n');
             }
-            count++;
+            itemCount++;
+          }
           }
         } finally {
           Closeables.closeQuietly(writer);
