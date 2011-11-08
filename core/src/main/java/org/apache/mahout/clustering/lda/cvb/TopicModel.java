@@ -48,6 +48,14 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
   private ThreadPoolExecutor threadPool;
   private Updater[] updaters;
 
+  public int getNumTerms() {
+    return numTerms;
+  }
+
+  public int getNumTopics() {
+    return numTopics;
+  }
+
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary,
       double modelWeight) {
     this(numTopics, numTerms, eta, alpha, null, dictionary, 1, modelWeight);
@@ -266,7 +274,7 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     }
   }
 
-  private void updateTopic(int topic, Vector docTopicCounts) {
+  public void updateTopic(int topic, Vector docTopicCounts) {
     docTopicCounts.addTo(topicTermCounts.getRow(topic));
     topicSums.set(topic, topicSums.get(topic) + docTopicCounts.norm(1));
   }

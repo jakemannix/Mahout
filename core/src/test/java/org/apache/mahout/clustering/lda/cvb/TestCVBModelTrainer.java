@@ -107,10 +107,9 @@ public class TestCVBModelTrainer extends TestCase {
         startingPerplexity = perplexity;
         previousPerplexity = perplexity;
       }
-      double variance = CVB0Driver.variance(perplexitiesWithWeights);
       double delta = (perplexity - previousPerplexity) / startingPerplexity;
       System.out.println(delta + " : cumulative delta:" + (1 - perplexity / startingPerplexity)
-                         + ", Perplexity: " + perplexity + ", variance: " + variance);
+                         + ", Perplexity: " + perplexity);
       previousPerplexity = perplexity;
     }
   }
@@ -165,65 +164,13 @@ public class TestCVBModelTrainer extends TestCase {
         startingPerplexity = perplexity;
         previousPerplexity = perplexity;
       }
-      double variance = CVB0Driver.variance(perplexitiesWithWeights);
       double delta = (perplexity - previousPerplexity) / startingPerplexity;
       System.out.println(delta + " : cumulative delta:" + (1 - perplexity / startingPerplexity)
-                         + ", Perplexity: " + perplexity + ", variance: " + variance);
+                         + ", Perplexity: " + perplexity);
       previousPerplexity = perplexity;
     }
     hashedModel.setConf(new Configuration());
     hashedModel.persist(new Path(basePath, "hashed-" + hashedFeatureDim), true);
-  }
-
-  public void testModelDissector() throws Exception {
-    int hashedFeatureDim = model.getNumTerms() / 10;
-    int numProbes = 4;
-    int seed = 1234;
-    int numTopics = model.getNumTopics();
-    Path hashedPath = new Path(basePath, "hashed-" + hashedFeatureDim);
-    TopicModel hashedModel = new TopicModel(new Configuration(), eta, alpha, null, 1, 1d, hashedPath);
-    TopicModelDissector dissector = new TopicModelDissector(hashedModel, numProbes, seed);
-    Matrix termTopicP = new DenseMatrix(numTopics, model.getNumTerms());
-    for(int termId = 0; termId < model.getNumTerms(); termId++) {
-      for(int topic = 0; topic < numTopics; topic++) {
-        termTopicP.set(topic, termId, dissector.pTermGivenTopic(termId, topic));
-      }
-    }
-    System.out.println(klDivergence(model.topicTermCounts(), termTopicP));
-    TopicModel unHashedModel = new TopicModel(termTopicP, new DenseVector(numTopics).assign(1d),
-        eta, alpha, dictionary, 1d);
-
-    System.out.println("Original model:\n" + model);
-    System.out.println("Unhashed model:\n" + unHashedModel);
-
-    List<Pair<Double,Double>> perplexitiesWithWeights = Lists.newArrayList();
-    List<Pair<Double,Double>> originalPerpWithWeights = Lists.newArrayList();
-    for(int docId = 0; docId < corpus.numRows(); docId++) {
-      Vector docTopicCounts = new DenseVector(numTopics).assign(1/numTopics);
-      for(int i=0; i<25; i++) {
-        Matrix docTopicModel
-            = new SparseRowMatrix(new int[] {numTopics, corpus.numCols()}, true);
-        unHashedModel.trainDocTopicModel(corpus.getRow(docId), docTopicCounts, docTopicModel);
-      }
-      perplexitiesWithWeights.add(
-            Pair.of(unHashedModel.perplexity(corpus.getRow(docId), docTopicCounts),
-                corpus.getRow(docId).norm(1)));
-      docTopicCounts = new DenseVector(numTopics).assign(1/numTopics);
-      for(int i=0; i<25; i++) {
-        Matrix docTopicModel
-            = new SparseRowMatrix(new int[] {numTopics, corpus.numCols()}, true);
-        model.trainDocTopicModel(corpus.getRow(docId), docTopicCounts, docTopicModel);
-      }
-      originalPerpWithWeights.add(
-            Pair.of(model.perplexity(corpus.getRow(docId), docTopicCounts),
-                corpus.getRow(docId).norm(1)));
-    }
-    double unHashedPerplexity = sum(perplexitiesWithWeights, true)
-                              / sum(perplexitiesWithWeights, false);
-    double originalPerplexity = sum(originalPerpWithWeights, true)
-                              / sum(originalPerpWithWeights, false);
-    System.out.println("Original: " + originalPerplexity + ", unhashed: " + unHashedPerplexity);
-    System.out.println("ratio:" + (unHashedPerplexity / originalPerplexity));
   }
 
   public double klDivergence(Matrix p, Matrix q) {
