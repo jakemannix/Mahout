@@ -7,6 +7,7 @@ import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
@@ -27,6 +28,7 @@ public class CachingCVB0PerplexityMapper extends
 
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
+    MemoryUtil.startMemoryLogger(1000);
     super.setup(context);
     Configuration conf = context.getConfiguration();
     double eta = conf.getFloat(CVB0Driver.TERM_TOPIC_SMOOTHING, Float.NaN);
@@ -53,11 +55,18 @@ public class CachingCVB0PerplexityMapper extends
       readModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(seed), null,
           numTrainThreads, modelWeight);
     }
-    TopicModel writeModel = modelWeight == 1
-        ? new TopicModel(numTopics, numTerms, eta, alpha, null, numUpdateThreads)
-        : readModel;
+    // Shouldn't need a write model for perplexity check...
+//    TopicModel writeModel = modelWeight == 1
+//        ? new TopicModel(numTopics, numTerms, eta, alpha, null, numUpdateThreads)
+//        : readModel;
+    TopicModel writeModel = null;
     modelTrainer = new ModelTrainer(readModel, writeModel, numTrainThreads, numTopics, numTerms);
     modelTrainer.start();
+  }
+
+  @Override
+  protected void cleanup(Context context) throws IOException, InterruptedException {
+    MemoryUtil.stopMemoryLogger();
   }
 
   @Override
