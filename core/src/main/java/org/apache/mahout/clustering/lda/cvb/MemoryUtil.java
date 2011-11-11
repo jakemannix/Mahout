@@ -1,6 +1,9 @@
 package org.apache.mahout.clustering.lda.cvb;
 
-import com.google.common.base.Preconditions;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,103 +29,51 @@ public class MemoryUtil {
             maxBytes });
   }
 
-  /**
-   * Thread which periodically logs heap memory statistics via
-   * {@link MemoryUtil#logMemoryStatistics()}.
-   */
-  public static class MemoryLoggerThread extends Thread {
-    private long rateInMillis = 1000;
-    private boolean paused = false;
-    private boolean stopped = false;
-
-    public MemoryLoggerThread(long rateInMillis) {
-      super(MemoryLoggerThread.class.getSimpleName());
-      setDaemon(true);
-      this.rateInMillis = rateInMillis;
-    }
-
-    public MemoryLoggerThread() {
-      this(1000);
-    }
-
-    @Override
-    public synchronized void run() {
-      log.info("Starting");
-      while (!stopped) {
-        while (!paused) {
-          try {
-            wait(rateInMillis);
-          } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-          }
-          logMemoryStatistics();
-        }
-        while (paused && !stopped) {
-          log.info("Paused");
-          try {
-            wait();
-          } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-          }
-        }
-      }
-      log.info("Stopping");
-    }
-
-    public long getRateInMillis() {
-      return rateInMillis;
-    }
-
-    public synchronized void setRateInMillis(long rateInMillis) {
-      this.rateInMillis = rateInMillis;
-      notifyAll();
-    }
-
-    public boolean isPaused() {
-      return paused;
-    }
-
-    public synchronized void setPaused(boolean paused) {
-      this.paused = paused;
-      notifyAll();
-    }
-
-    public synchronized void end() {
-      stopped = paused = true;
-      notifyAll();
-    }
-  }
-
-  private static MemoryLoggerThread memoryLoggerThread;
+  private static ScheduledExecutorService scheduler;
 
   /**
-   * Constructs and starts a {@link MemoryLoggerThread}.
+   * Constructs and starts a memory logger thread.
    *
    * @param rateInMillis how often memory info should be logged.
    */
-  public static synchronized void startMemoryLogger(long rateInMillis) {
-    Preconditions.checkState(memoryLoggerThread == null, "Memory logger already started");
-    memoryLoggerThread = new MemoryLoggerThread(rateInMillis);
-    memoryLoggerThread.start();
+  public static void startMemoryLogger(long rateInMillis) {
+    stopMemoryLogger();
+    scheduler = Executors.newScheduledThreadPool(1, new ThreadFactory() {
+      private final ThreadFactory delegate = Executors.defaultThreadFactory();
+
+      @Override
+      public Thread newThread(Runnable r) {
+        Thread t = delegate.newThread(r);
+        t.setDaemon(true);
+        return t;
+      }
+    });
+    Runnable memoryLoogerRunnable = new Runnable() {
+      public void run() {
+        logMemoryStatistics();
+      }
+    };
+    scheduler.scheduleAtFixedRate(memoryLoogerRunnable, rateInMillis, rateInMillis,
+        TimeUnit.MILLISECONDS);
   }
 
   /**
-   * Constructs and starts a {@link MemoryLoggerThread} with a logging rate of 1000 milliseconds.
+   * Constructs and starts a memory logger thread with a logging rate of 1000 milliseconds.
    */
-  public static synchronized void startMemoryLogger() {
+  public static void startMemoryLogger() {
     startMemoryLogger(1000);
   }
 
   /**
-   * Stops the {@link MemoryLoggerThread}, if any, started via {@link #startMemoryLogger(long)} or
+   * Stops the memory logger, if any, started via {@link #startMemoryLogger(long)} or
    * {@link #startMemoryLogger()}.
    */
-  public static synchronized void stopMemoryLogger() {
-    if (memoryLoggerThread == null) {
+  public static void stopMemoryLogger() {
+    if (scheduler == null) {
       return;
     }
-    memoryLoggerThread.end();
-    memoryLoggerThread = null;
+    scheduler.shutdownNow();
+    scheduler = null;
   }
 
   /**
