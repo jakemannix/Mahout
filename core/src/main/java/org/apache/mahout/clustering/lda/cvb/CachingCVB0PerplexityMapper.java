@@ -20,7 +20,7 @@ import java.util.Random;
 
 public class CachingCVB0PerplexityMapper extends
     Mapper<IntWritable, VectorWritable, NullWritable, DoubleWritable> {
-  private static Logger log = LoggerFactory.getLogger(CachingCVB0Mapper.class);
+  private static Logger log = LoggerFactory.getLogger(CachingCVB0PerplexityMapper.class);
 
   protected ModelTrainer modelTrainer;
   protected int maxIters;
@@ -28,7 +28,7 @@ public class CachingCVB0PerplexityMapper extends
 
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
-    MemoryUtil.startMemoryLogger(1000);
+    MemoryUtil.startMemoryLogger(500);
     super.setup(context);
     Configuration conf = context.getConfiguration();
     double eta = conf.getFloat(CVB0Driver.TERM_TOPIC_SMOOTHING, Float.NaN);
