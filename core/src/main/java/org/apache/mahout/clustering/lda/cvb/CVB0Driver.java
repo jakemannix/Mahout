@@ -256,7 +256,8 @@ public class CVB0Driver extends AbstractJob {
 
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations) {
-      if (rateOfChange(perplexities) > convergenceDelta) {
+      if (rateOfChange(perplexities) < convergenceDelta) {
+        Preconditions.checkState(!perplexities.isEmpty(), "Programmer error: perplexities is empty");
         log.info("Convergence achieved at iteration {} with perplexity {}",
             iterationNumber, perplexities.get(perplexities.size() - 1));
         break;
@@ -293,7 +294,7 @@ public class CVB0Driver extends AbstractJob {
   private double rateOfChange(List<Double> perplexities) {
     int sz = perplexities.size();
     if(sz < 2) {
-      return 1;
+      return Double.MAX_VALUE;
     }
     return Math.abs(perplexities.get(sz - 1) - perplexities.get(sz - 2)) / perplexities.get(0);
   }
