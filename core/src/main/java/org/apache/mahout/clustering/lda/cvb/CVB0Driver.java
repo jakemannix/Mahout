@@ -257,6 +257,7 @@ public class CVB0Driver extends AbstractJob {
 
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations) {
+      // test convergence
       if (convergenceDelta > 0) {
         double delta = rateOfChange(perplexities);
         if (convergenceDelta > delta) {
@@ -265,15 +266,21 @@ public class CVB0Driver extends AbstractJob {
           break;
         }
       }
+
+      // update model
       iterationNumber++;
       log.info("About to run iteration {} of {}", iterationNumber, maxIterations);
       Path modelInputPath = modelPath(topicModelStateTempPath, iterationNumber - 1);
       Path modelOutputPath = modelPath(topicModelStateTempPath, iterationNumber);
       runIteration(conf, inputPath, modelInputPath, modelOutputPath, iterationNumber,
           maxIterations, numReduceTasks);
+
+      // ensure model weight has been initialized
       if(modelWeight < 0) {
         modelWeight = calculateModelWeight(conf, modelOutputPath);
       }
+
+      // calculate perplexity
       if(testFraction > 0 && iterationNumber % iterationBlockSize == 0) {
         perplexities.add(calculatePerplexity(conf, modelOutputPath, iterationNumber) / modelWeight);
         log.info("Current perplexity = " + perplexities.get(perplexities.size() - 1));
@@ -283,11 +290,19 @@ public class CVB0Driver extends AbstractJob {
     }
     log.info("Completed {} iterations in {} seconds", iterationNumber,
         (System.currentTimeMillis() - startTime)/1000);
-    log.info("Perplexities: (" + Joiner.on(", ").join(perplexities) + ")");
+    log.info("Perplexities: ({})", Joiner.on(", ").join(perplexities));
+
+    // write final topic-term and doc-topic distributions
     Path finalIterationData = modelPath(topicModelStateTempPath, iterationNumber);
+    Job topicModelOutputJob = topicModelOutputPath != null
+        ? writeTopicModel(conf, finalIterationData, topicModelOutputPath)
+        : null;
     Job docInferenceJob = docTopicOutputPath != null
         ? writeDocTopicInference(conf, inputPath, finalIterationData, docTopicOutputPath)
         : null;
+    if(topicModelOutputJob != null && !topicModelOutputJob.waitForCompletion(true)) {
+      return -1;
+    }
     if(docInferenceJob != null && !docInferenceJob.waitForCompletion(true)) {
       return -1;
     }
@@ -351,12 +366,31 @@ public class CVB0Driver extends AbstractJob {
 
   }
 
+  private Job writeTopicModel(Configuration conf, Path modelInput, Path output) throws IOException,
+      InterruptedException, ClassNotFoundException {
+    String jobName = String.format("Writing final topic/term distributions from %s to %s", modelInput,
+        output);
+    log.info("About to run: " + jobName);
+    Job job = new Job(conf, jobName);
+    job.setJarByClass(CVB0Driver.class);
+    job.setInputFormatClass(SequenceFileInputFormat.class);
+    job.setMapperClass(CVB0TopicTermVectorNormalizerMapper.class);
+    job.setNumReduceTasks(0);
+    job.setOutputKeyClass(IntWritable.class);
+    job.setOutputValueClass(VectorWritable.class);
+    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+    FileInputFormat.addInputPath(job, modelInput);
+    FileOutputFormat.setOutputPath(job, output);
+    job.submit();
+    return job;
+  }
+
   private Job writeDocTopicInference(Configuration conf, Path corpus, Path modelInput, Path output)
       throws IOException, ClassNotFoundException, InterruptedException {
     String jobName = String.format("Writing final document/topic inference from %s to %s", corpus,
         output);
     log.info("About to run: " + jobName);
-    Job job = new Job(getConf(), jobName);
+    Job job = new Job(conf, jobName);
     job.setMapperClass(CVB0DocInferenceMapper.class);
     job.setNumReduceTasks(0);
     job.setInputFormatClass(SequenceFileInputFormat.class);
