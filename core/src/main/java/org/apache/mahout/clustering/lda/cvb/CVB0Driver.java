@@ -5,6 +5,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileStatus;
@@ -105,7 +106,7 @@ public class CVB0Driver extends AbstractJob {
     addInputOption();
     addOutputOption();
     addOption(DefaultOptionCreator.maxIterationsOption().create());
-    addOption(DefaultOptionCreator.convergenceOption().create());
+    addOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION, "cd", "The convergence delta value", "0.0001");
     addOption(DefaultOptionCreator.overwriteOption().create());
 
     addOption(NUM_TOPICS, "k", "Number of topics to learn", true);
@@ -256,11 +257,13 @@ public class CVB0Driver extends AbstractJob {
 
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations) {
-      if (rateOfChange(perplexities) < convergenceDelta) {
-        Preconditions.checkState(!perplexities.isEmpty(), "Programmer error: perplexities is empty");
-        log.info("Convergence achieved at iteration {} with perplexity {}",
-            iterationNumber, perplexities.get(perplexities.size() - 1));
-        break;
+      if (convergenceDelta > 0) {
+        double delta = rateOfChange(perplexities);
+        if (convergenceDelta > delta) {
+          log.info("Convergence achieved at iteration {} with perplexity {} and delta {}",
+              new Object[]{iterationNumber, perplexities.get(perplexities.size() - 1), delta});
+          break;
+        }
       }
       iterationNumber++;
       log.info("About to run iteration {} of {}", iterationNumber, maxIterations);
