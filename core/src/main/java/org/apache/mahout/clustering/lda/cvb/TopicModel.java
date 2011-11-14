@@ -288,20 +288,36 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
   }
 
   /**
+   * Computes {@code p(topic x|term a, document i)} distributions given input document {@code i}.
+   * {@code pTGT[x][a]} is the (un-normalized) {@code p(x|a,i)}, or if docTopics is {@code null},
+   * {@code p(a|x)} (also un-normalized).
    *
-   * @param docTopics d[x] is the overall weight of topic_x in this document.
-   * @return pTGT[x].get(a) is the (un-normalized) p(x|a,i), or if docTopics is null,
-   * p(a|x) (also un-normalized)
+   * @param document doc-term vector encoding {@code w(term a|document i)}.
+   * @param docTopics {@code docTopics[x]} is the overall weight of topic {@code x} in given
+   *          document. If {@code null}, a topic weight of {@code 1.0} is used for all topics.
+   * @param termTopicDist storage for output {@code p(x|a,i)} distributions.
    */
   private void pTopicGivenTerm(Vector document, Vector docTopics, Matrix termTopicDist) {
+    // for each topic x
     for(int x = 0; x < numTopics; x++) {
+      // get p(topic x | document i), or 1.0 if docTopics is null
+      double topicWeight = docTopics == null ? 1d : docTopics.get(x);
+      // get w(term a | topic x)
+      Vector topicTermRow = topicTermCounts.getRow(x);
+      // get \sum_a w(term a | topic x)
+      double topicSum = topicSums.get(x);
+      // get p(topic x | term a) distribution to update
+      Vector termTopicRow = termTopicDist.getRow(x);
+
+      // for each term a in document i with non-zero weight
       Iterator<Vector.Element> it = document.iterateNonZero();
       while(it.hasNext()) {
         Vector.Element e = it.next();
-        int term = e.index();
-        double d = docTopics == null ? 1d : docTopics.get(x);
-        double p = (topicTermCounts.getRow(x).get(term) + eta) * (d + alpha) / (topicSums.get(x) + eta * numTerms);
-        termTopicDist.getRow(x).set(e.index(), p);
+        int termIndex = e.index();
+
+        // calc un-normalized p(topic x | term a, document i)
+        double termTopicLikelihood = (topicTermRow.get(termIndex) + eta) * (topicWeight + alpha) / (topicSum + eta * numTerms);
+        termTopicRow.set(termIndex, termTopicLikelihood);
       }
     }
   }
