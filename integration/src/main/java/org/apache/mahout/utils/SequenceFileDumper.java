@@ -129,7 +129,7 @@ public final class SequenceFileDumper {
                 count++;
                 itemCount++;
               }
-              writer.append("Count: ").append(String.valueOf(count)).append('\n');
+              writer.append("Count: ").append(String.valueOf(count)).append('\n').flush();
             } else {
               while (iterator.hasNext() && (numItems == null || itemCount < numItems)) {
                 Pair<?, ?> record = iterator.next();
