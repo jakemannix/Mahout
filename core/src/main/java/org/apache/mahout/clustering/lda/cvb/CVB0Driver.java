@@ -283,9 +283,10 @@ public class CVB0Driver extends AbstractJob {
       // calculate perplexity
       if(testFraction > 0 && iterationNumber % iterationBlockSize == 0) {
         perplexities.add(calculatePerplexity(conf, modelOutputPath, iterationNumber) / modelWeight);
-        log.info("Current perplexity = " + perplexities.get(perplexities.size() - 1));
-        log.info("p_" + iterationNumber + " - p_" + (iterationNumber-iterationBlockSize) +
-                 " / p_0 = " + rateOfChange(perplexities) + ".  target: " + convergenceDelta);
+        log.info("Current perplexity = {}", perplexities.get(perplexities.size() - 1));
+        log.info("(p_{} - p_{}) / p_0 = {}; target = {}", new Object[]{
+            iterationNumber , iterationNumber - iterationBlockSize, rateOfChange(perplexities), convergenceDelta
+        });
       }
     }
     log.info("Completed {} iterations in {} seconds", iterationNumber,
