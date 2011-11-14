@@ -77,7 +77,7 @@ public class CachingCVB0PerplexityMapper extends
   @Override
   public void map(IntWritable docId, VectorWritable document, Context context)
       throws IOException, InterruptedException{
-    outValue.set(modelTrainer.calculatePerplexity(document.get(), topicVector.assign(1/numTopics), maxIters));
+    outValue.set(modelTrainer.calculatePerplexity(document.get(), topicVector.assign(1.0 / numTopics), maxIters));
     context.write(outKey, outValue);
   }
 }
