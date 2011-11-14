@@ -244,7 +244,7 @@ public class CVB0Driver extends AbstractJob {
           log.error("Model path '{}' does not exist; Skipping iteration {} perplexity calculation", modelPath.toString(), i);
           continue;
         }
-        perplexity = calculatePerplexity(conf, modelPath, i);
+        perplexity = calculatePerplexity(conf, inputPath, modelPath, i);
       }
 
       // normalize perplexity
@@ -282,7 +282,7 @@ public class CVB0Driver extends AbstractJob {
 
       // calculate perplexity
       if(testFraction > 0 && iterationNumber % iterationBlockSize == 0) {
-        perplexities.add(calculatePerplexity(conf, modelOutputPath, iterationNumber) / modelWeight);
+        perplexities.add(calculatePerplexity(conf, inputPath, modelOutputPath, iterationNumber) / modelWeight);
         log.info("Current perplexity = {}", perplexities.get(perplexities.size() - 1));
         log.info("(p_{} - p_{}) / p_0 = {}; target = {}", new Object[]{
             iterationNumber , iterationNumber - iterationBlockSize, rateOfChange(perplexities), convergenceDelta
@@ -318,7 +318,7 @@ public class CVB0Driver extends AbstractJob {
     return Math.abs(perplexities.get(sz - 1) - perplexities.get(sz - 2)) / perplexities.get(0);
   }
 
-  private double calculatePerplexity(Configuration conf, Path modelPath, int iteration)
+  private double calculatePerplexity(Configuration conf, Path corpusPath, Path modelPath, int iteration)
       throws IOException,
       ClassNotFoundException, InterruptedException {
     String jobName = "Calculating perplexity for " + modelPath;
@@ -329,14 +329,15 @@ public class CVB0Driver extends AbstractJob {
     job.setCombinerClass(DoubleSumReducer.class);
     job.setReducerClass(DoubleSumReducer.class);
     job.setNumReduceTasks(1);
-    job.setInputFormatClass(SequenceFileInputFormat.class);
-    job.setOutputFormatClass(SequenceFileOutputFormat.class);
     job.setOutputKeyClass(NullWritable.class);
     job.setOutputValueClass(DoubleWritable.class);
-    FileInputFormat.addInputPath(job, modelPath);
+    job.setInputFormatClass(SequenceFileInputFormat.class);
+    job.setOutputFormatClass(SequenceFileOutputFormat.class);
+    FileInputFormat.addInputPath(job, corpusPath);
     Path outputPath = perplexityPath(modelPath.getParent(), iteration);
-    HadoopUtil.delete(conf, outputPath);
     FileOutputFormat.setOutputPath(job, outputPath);
+    cacheModelFiles(job, modelPath);
+    HadoopUtil.delete(conf, outputPath);
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException("Failed to calculate perplexity for: " + modelPath);
     }
@@ -456,21 +457,27 @@ public class CVB0Driver extends AbstractJob {
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     FileInputFormat.addInputPath(job, corpusInput);
     FileOutputFormat.setOutputPath(job, modelOutput);
-    FileSystem fs = FileSystem.get(conf);
-    if(modelInput != null && fs.exists(modelInput)) {
-      FileStatus[] statuses = FileSystem.get(conf).listStatus(modelInput, PathFilters.partFilter());
-      Preconditions.checkState(statuses.length > 0, "No part files found in model path '%s'", modelInput.toString());
-      URI[] modelUris = new URI[statuses.length];
-      for(int i = 0; i < statuses.length; i++) {
-        modelUris[i] = statuses[i].getPath().toUri();
-      }
-      DistributedCache.setCacheFiles(modelUris, conf);
-    }
+    cacheModelFiles(job, modelInput);
     HadoopUtil.delete(conf, modelOutput);
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException(String.format("Failed to complete iteration %d stage 1",
           iterationNumber));
     }
+  }
+
+  private void cacheModelFiles(Job job, Path modelPath) throws IOException {
+    Configuration conf = job.getConfiguration();
+    FileSystem fs = FileSystem.get(conf);
+    if (modelPath == null || !fs.exists(modelPath)) {
+      return;
+    }
+    FileStatus[] statuses = FileSystem.get(conf).listStatus(modelPath, PathFilters.partFilter());
+    Preconditions.checkState(statuses.length > 0, "No part files found in model path '%s'", modelPath.toString());
+    URI[] modelUris = new URI[statuses.length];
+    for(int i = 0; i < statuses.length; i++) {
+      modelUris[i] = statuses[i].getPath().toUri();
+    }
+    DistributedCache.setCacheFiles(modelUris, conf);
   }
 
   private double calculateModelWeight(Configuration conf, Path modelBasePath) throws IOException {

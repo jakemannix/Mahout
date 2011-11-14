@@ -14,7 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.URI;
 import java.util.Random;
 
 public class CachingCVB0PerplexityMapper extends
@@ -45,16 +44,9 @@ public class CachingCVB0PerplexityMapper extends
     double modelWeight = conf.getFloat(CVB0Driver.MODEL_WEIGHT, 1f);
 
     log.info("Retrieving model files from distributed cache");
-    URI[] localFiles = DistributedCache.getCacheFiles(conf);
-    Path[] localPaths = null;
-    if(localFiles != null) {
-      localPaths = new Path[localFiles.length];
-      for(int i = 0; i < localFiles.length; i++) {
-        localPaths[i] = new Path(localFiles[i].toString());
-      }
-    }
+    Path[] localPaths = DistributedCache.getLocalCacheFiles(conf);
     TopicModel readModel;
-    if(localPaths != null) {
+    if(localPaths != null && localPaths.length > 0) {
       readModel = new TopicModel(conf, eta, alpha, null, numUpdateThreads, modelWeight, localPaths);
     } else {
       log.info("No model files found");
