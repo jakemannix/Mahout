@@ -7,7 +7,6 @@ import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
@@ -25,11 +24,15 @@ public class CachingCVB0PerplexityMapper extends
   protected ModelTrainer modelTrainer;
   protected int maxIters;
   protected int numTopics;
+  protected Vector topicVector;
+  protected final NullWritable outKey = NullWritable.get();
+  protected final DoubleWritable outValue = new DoubleWritable();
 
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
     MemoryUtil.startMemoryLogger(500);
-    super.setup(context);
+
+    log.info("Retrieving configuration");
     Configuration conf = context.getConfiguration();
     double eta = conf.getFloat(CVB0Driver.TERM_TOPIC_SMOOTHING, Float.NaN);
     double alpha = conf.getFloat(CVB0Driver.DOC_TOPIC_SMOOTHING, Float.NaN);
@@ -40,6 +43,8 @@ public class CachingCVB0PerplexityMapper extends
     int numTrainThreads = conf.getInt(CVB0Driver.NUM_TRAIN_THREADS, 4);
     maxIters = conf.getInt(CVB0Driver.MAX_ITERATIONS_PER_DOC, 10);
     double modelWeight = conf.getFloat(CVB0Driver.MODEL_WEIGHT, 1f);
+
+    log.info("Retrieving model files from distributed cache");
     URI[] localFiles = DistributedCache.getCacheFiles(conf);
     Path[] localPaths = null;
     if(localFiles != null) {
@@ -52,16 +57,16 @@ public class CachingCVB0PerplexityMapper extends
     if(localPaths != null) {
       readModel = new TopicModel(conf, eta, alpha, null, numUpdateThreads, modelWeight, localPaths);
     } else {
+      log.info("No model files found");
       readModel = new TopicModel(numTopics, numTerms, eta, alpha, new Random(seed), null,
           numTrainThreads, modelWeight);
     }
-    // Shouldn't need a write model for perplexity check...
-//    TopicModel writeModel = modelWeight == 1
-//        ? new TopicModel(numTopics, numTerms, eta, alpha, null, numUpdateThreads)
-//        : readModel;
-    TopicModel writeModel = null;
-    modelTrainer = new ModelTrainer(readModel, writeModel, numTrainThreads, numTopics, numTerms);
-    modelTrainer.start();
+
+    log.info("Creating model trainer");
+    modelTrainer = new ModelTrainer(readModel, null, numTrainThreads, numTopics, numTerms);
+
+    log.info("Creating topic vector");
+    topicVector = new DenseVector(new double[numTopics]);
   }
 
   @Override
@@ -72,9 +77,7 @@ public class CachingCVB0PerplexityMapper extends
   @Override
   public void map(IntWritable docId, VectorWritable document, Context context)
       throws IOException, InterruptedException{
-    Vector topicVector = new DenseVector(new double[numTopics]).assign(1/numTopics);
-    double perplexity = modelTrainer.calculatePerplexity(document.get(), topicVector, maxIters);
-    context.write(NullWritable.get(), new DoubleWritable(perplexity));
+    outValue.set(modelTrainer.calculatePerplexity(document.get(), topicVector.assign(1/numTopics), maxIters));
+    context.write(outKey, outValue);
   }
-
 }
