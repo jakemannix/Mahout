@@ -140,6 +140,7 @@ public class ModelTrainer {
             writeModel.update(runnable.docTopicModel);
           }
         }
+        break;
       } catch (InterruptedException e) {
         log.warn("Interrupted during batch training, retrying!", e);
       }

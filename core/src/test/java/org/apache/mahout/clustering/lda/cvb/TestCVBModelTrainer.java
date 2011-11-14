@@ -1,7 +1,12 @@
 package org.apache.mahout.clustering.lda.cvb;
 
+import com.google.common.base.Charsets;
+import com.google.common.base.Function;
 import com.google.common.base.Joiner;
+import com.google.common.base.Predicates;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
+import com.google.common.io.Files;
 import com.google.common.primitives.Ints;
 import junit.framework.TestCase;
 import org.apache.hadoop.conf.Configuration;
@@ -15,13 +20,18 @@ import org.apache.mahout.math.MatrixUtils;
 import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
+import org.apache.mahout.math.function.Functions;
 import org.apache.mahout.vectorizer.encoders.MurmurHash;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.regex.Pattern;
 
 public class TestCVBModelTrainer extends TestCase {
 
@@ -34,6 +44,7 @@ public class TestCVBModelTrainer extends TestCase {
   Path modelPath = new Path(basePath, "topics_2");
   Path corpusPath = new Path(basePath, "vectorized/int_vectors/matrix");
   Path dictionaryPath = new Path(basePath, "vectorized/dictionary.file-0");
+  Path otp = new Path(basePath, "otp.txt");
 
   TopicModel model;
   Matrix corpus;
@@ -59,7 +70,8 @@ public class TestCVBModelTrainer extends TestCase {
       Matrix docTopicModel =
           new SparseRowMatrix(new int[] {model.getNumTopics(), model.getNumTerms()}, true);
       int i = 0;
-      List<String> perplexities = Lists.newArrayList();
+      List<String> perplexityStrings = Lists.newArrayList();
+      List<Double> perplexities = Lists.newArrayList();
       double p0 = -1;
       while(i < 25) {
         double perplexity = model.perplexity(doc, docTopicCounts);
@@ -67,11 +79,15 @@ public class TestCVBModelTrainer extends TestCase {
         if(p0 < 0) {
           p0 = perplexity;
         }
-        perplexities.add(String.format("%.6f", (1 - perplexity / p0)));
+        double relativePerplexity = (1 - perplexity / p0);
+        double previous = i == 0 ? relativePerplexity : perplexities.get(i - 1);
+        perplexityStrings.add(String.format("%.6f", relativePerplexity - previous));
+        perplexities.add(relativePerplexity);
         i++;
       }
       System.out.println("numUniqueTerms: " + doc.getNumNondefaultElements());
-      System.out.println(Joiner.on(", ").join(perplexities));
+      Collections.sort(perplexityStrings, Collections.<String>reverseOrder());
+      System.out.println(Joiner.on(", ").join(perplexityStrings));
       if(j++ > 100) break;
     }
   }
@@ -173,6 +189,35 @@ public class TestCVBModelTrainer extends TestCase {
     hashedModel.persist(new Path(basePath, "hashed-" + hashedFeatureDim), true);
   }
 
+  @Test
+  public void testOverlappingTriangles() throws Exception {
+    Matrix overlappingTriangles = loadOverlappingTrianglesCorpus();
+    String[] terms = new String[26];
+    for(int i=0; i<terms.length; i++) {
+      terms[i] = "" + ((char)(i + 97));
+    }
+    InMemoryCollapsedVariationalBayes0 cvb =
+        new InMemoryCollapsedVariationalBayes0(overlappingTriangles, terms, 5, 0.01, 0.01, 1, 1, 1);
+    cvb.setVerbose(true);
+    cvb.iterateUntilConvergence(0, 100, 10);
+    cvb.writeModel(new Path("/tmp/topics"));
+  }
+
+  @Test
+  public void testLoadTopics() throws Exception {
+    String[] terms = new String[26];
+    for(int i=0; i<terms.length; i++) {
+      terms[i] = "" + ((char)(i + 97));
+    }
+    TopicModel otpModel = new TopicModel(new Configuration(), 0.01, 0.01, terms, 1, 1,
+        new Path("/tmp/topics"));
+    Matrix otpMatrix = otpModel.topicTermCounts();
+    for(int topic = 0; topic < otpMatrix.numRows(); topic++) {
+      otpMatrix.getRow(topic).assign(Functions.mult(1/otpMatrix.getRow(topic).norm(1)));
+    }
+    System.out.println(otpModel.toString());
+  }
+
   public double klDivergence(Matrix p, Matrix q) {
     int numTopics = p.numRows();
     double divergence = 0;
@@ -196,4 +241,26 @@ public class TestCVBModelTrainer extends TestCase {
     return sum;
   }
 
+  public Matrix loadOverlappingTrianglesCorpus() throws IOException {
+    List<Vector> vectors = Lists.newArrayList(
+        Collections2.transform(Collections2.filter(Files.readLines(
+          new File("/Users/jake/open_src/gitrepo/mahout/examples/bin/work/20news-bydate/otp.txt"),
+          Charsets.UTF_8),
+        Predicates.contains(Pattern.compile("[a-z]"))), new Function<String, Vector>() {
+      @Override public Vector apply(String s) {
+        Vector vector = new DenseVector(26);
+        String[] tokens = s.split(" ");
+        for(String token : tokens) {
+          char t = token.charAt(0);
+          if(Character.isLetter(t) && Character.isLowerCase(t)) {
+            vector.set(t - 97, vector.get(t - 97) + 1);
+          }
+        }
+        return vector;
+      }
+    }));
+
+    return new SparseRowMatrix(new int[] {vectors.size(), 26},
+        vectors.toArray(new Vector[vectors.size()]));
+  }
 }
