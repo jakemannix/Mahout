@@ -94,19 +94,20 @@ public class CVB0Driver extends AbstractJob {
   public static final String MODEL_TEMP_DIR = "topic_model_temp_dir";
   public static final String ITERATION_BLOCK_SIZE = "iteration_block_size";
   public static final String RANDOM_SEED = "random_seed";
-  public static final String TEST_SET_PERCENTAGE = "test_set_percentage";
+  public static final String TEST_SET_FRACTION = "test_set_fraction";
   public static final String NUM_TRAIN_THREADS = "num_train_threads";
   public static final String NUM_UPDATE_THREADS = "num_update_threads";
   public static final String MAX_ITERATIONS_PER_DOC = "max_doc_topic_iters";
   public static final String MODEL_WEIGHT = "prev_iter_mult";
   public static final String NUM_REDUCE_TASKS = "num_reduce_tasks";
   public static final String BACKFILL_PERPLEXITY = "backfill_perplexity";
+  private static final String MODEL_PATHS = "mahout.lda.cvb.modelPath";
 
   @Override public int run(String[] args) throws Exception {
     addInputOption();
     addOutputOption();
     addOption(DefaultOptionCreator.maxIterationsOption().create());
-    addOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION, "cd", "The convergence delta value", "0.0001");
+    addOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION, "cd", "The convergence delta value", "0");
     addOption(DefaultOptionCreator.overwriteOption().create());
 
     addOption(NUM_TOPICS, "k", "Number of topics to learn", true);
@@ -121,7 +122,7 @@ public class CVB0Driver extends AbstractJob {
         false);
     addOption(ITERATION_BLOCK_SIZE, "block", "Number of iterations per perplexity check", "10");
     addOption(RANDOM_SEED, "seed", "Random seed", false);
-    addOption(TEST_SET_PERCENTAGE, "tp", "% of data to hold out for testing", "0");
+    addOption(TEST_SET_FRACTION, "tf", "Fraction of data to hold out for testing", "0");
     addOption(NUM_TRAIN_THREADS, "ntt", "number of threads per mapper to train with", "4");
     addOption(NUM_UPDATE_THREADS, "nut", "number of threads per mapper to update the model with",
         "1");
@@ -158,8 +159,8 @@ public class CVB0Driver extends AbstractJob {
     long seed = hasOption(RANDOM_SEED)
               ? Long.parseLong(getOption(RANDOM_SEED))
               : System.nanoTime() % 10000;
-    float testFraction = hasOption(TEST_SET_PERCENTAGE)
-                       ? Float.parseFloat(getOption(TEST_SET_PERCENTAGE))
+    float testFraction = hasOption(TEST_SET_FRACTION)
+                       ? Float.parseFloat(getOption(TEST_SET_FRACTION))
                        : 0f;
     int numReduceTasks = Integer.parseInt(getOption(NUM_REDUCE_TASKS));
     boolean backfillPerplexity = hasOption(BACKFILL_PERPLEXITY);
@@ -190,6 +191,12 @@ public class CVB0Driver extends AbstractJob {
       Path topicModelStateTempPath, long randomSeed, float testFraction, int numTrainThreads,
       int numUpdateThreads, int maxItersPerDoc, int numReduceTasks, boolean backfillPerplexity)
       throws ClassNotFoundException, IOException, InterruptedException {
+    // verify arguments
+    Preconditions.checkArgument(0 <= testFraction && 1.0 >= testFraction,
+        "Expected 'testFraction' value in range [0, 1] but found value '%s'", testFraction);
+    Preconditions.checkArgument(!backfillPerplexity || 0 < testFraction,
+        "Expected 'testFraction' value in range (0, 1] but found value '%s'", testFraction);
+
     String infoString = "Will run Collapsed Variational Bayes (0th-derivative approximation) " +
       "learning for LDA on {} (numTerms: {}), finding {}-topics, with document/topic prior {}, " +
       "topic/term prior {}.  Maximum iterations to run will be {}, unless the change in " +
@@ -217,6 +224,7 @@ public class CVB0Driver extends AbstractJob {
     conf.set(NUM_UPDATE_THREADS, String.valueOf(numUpdateThreads));
     conf.set(MAX_ITERATIONS_PER_DOC, String.valueOf(maxItersPerDoc));
     conf.set(MODEL_WEIGHT, String.valueOf(1)); // TODO:
+    conf.set(TEST_SET_FRACTION, String.valueOf(testFraction));
     double modelWeight = -1;
 
     List<Double> perplexities = Lists.newArrayList();
@@ -258,9 +266,9 @@ public class CVB0Driver extends AbstractJob {
     long startTime = System.currentTimeMillis();
     while(iterationNumber < maxIterations) {
       // test convergence
-      if (convergenceDelta > 0) {
-        double delta = rateOfChange(perplexities);
-        if (convergenceDelta > delta) {
+      if (0 < convergenceDelta) {
+        final double delta = rateOfChange(perplexities);
+        if (delta < convergenceDelta) {
           log.info("Convergence achieved at iteration {} with perplexity {} and delta {}",
               new Object[]{iterationNumber, perplexities.get(perplexities.size() - 1), delta});
           break;
@@ -336,7 +344,7 @@ public class CVB0Driver extends AbstractJob {
     FileInputFormat.addInputPath(job, corpusPath);
     Path outputPath = perplexityPath(modelPath.getParent(), iteration);
     FileOutputFormat.setOutputPath(job, outputPath);
-    cacheModelFiles(job, modelPath);
+    setModelPaths(job, modelPath);
     HadoopUtil.delete(conf, outputPath);
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException("Failed to calculate perplexity for: " + modelPath);
@@ -457,7 +465,7 @@ public class CVB0Driver extends AbstractJob {
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     FileInputFormat.addInputPath(job, corpusInput);
     FileOutputFormat.setOutputPath(job, modelOutput);
-    cacheModelFiles(job, modelInput);
+    setModelPaths(job, modelInput);
     HadoopUtil.delete(conf, modelOutput);
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException(String.format("Failed to complete iteration %d stage 1",
@@ -465,7 +473,7 @@ public class CVB0Driver extends AbstractJob {
     }
   }
 
-  private void cacheModelFiles(Job job, Path modelPath) throws IOException {
+  private void setModelPaths(Job job, Path modelPath) throws IOException {
     Configuration conf = job.getConfiguration();
     FileSystem fs = FileSystem.get(conf);
     if (modelPath == null || !fs.exists(modelPath)) {
@@ -473,11 +481,23 @@ public class CVB0Driver extends AbstractJob {
     }
     FileStatus[] statuses = FileSystem.get(conf).listStatus(modelPath, PathFilters.partFilter());
     Preconditions.checkState(statuses.length > 0, "No part files found in model path '%s'", modelPath.toString());
-    URI[] modelUris = new URI[statuses.length];
-    for(int i = 0; i < statuses.length; i++) {
-      modelUris[i] = statuses[i].getPath().toUri();
+    String[] modelPaths = new String[statuses.length];
+    for (int i = 0; i < statuses.length; i++) {
+      modelPaths[i] = statuses[i].getPath().toUri().toString();
     }
-    DistributedCache.setCacheFiles(modelUris, conf);
+    conf.setStrings(MODEL_PATHS, modelPaths);
+  }
+
+  public static Path[] getModelPaths(Configuration conf) {
+    String[] modelPathNames = conf.getStrings(MODEL_PATHS);
+    if (modelPathNames == null || modelPathNames.length == 0) {
+      return null;
+    }
+    Path[] modelPaths = new Path[modelPathNames.length];
+    for (int i = 0; i < modelPathNames.length; i++) {
+      modelPaths[i] = new Path(modelPathNames[i]);
+    }
+    return modelPaths;
   }
 
   private double calculateModelWeight(Configuration conf, Path modelBasePath) throws IOException {
