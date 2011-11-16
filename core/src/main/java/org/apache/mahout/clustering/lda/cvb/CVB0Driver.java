@@ -1,9 +1,7 @@
 package org.apache.mahout.clustering.lda.cvb;
 
-import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
 
 import org.apache.hadoop.conf.Configuration;
@@ -17,6 +15,7 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
@@ -27,10 +26,10 @@ import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
-import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterable;
+import org.apache.mahout.common.iterator.sequencefile.PathType;
+import org.apache.mahout.common.iterator.sequencefile.SequenceFileDirIterable;
 import org.apache.mahout.common.mapreduce.VectorSumReducer;
 import org.apache.mahout.math.VectorWritable;
-import org.apache.mahout.math.stats.entropy.DoubleSumReducer;
 import org.apache.mahout.vectorizer.SparseVectorsFromSequenceFiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -225,24 +224,14 @@ public class CVB0Driver extends AbstractJob {
     conf.set(MAX_ITERATIONS_PER_DOC, String.valueOf(maxItersPerDoc));
     conf.set(MODEL_WEIGHT, String.valueOf(1)); // TODO:
     conf.set(TEST_SET_FRACTION, String.valueOf(testFraction));
-    double modelWeight = -1;
 
     List<Double> perplexities = Lists.newArrayList();
     for (int i = 1; i <= iterationNumber; i++) {
       // form path to model
       Path modelPath = modelPath(topicModelStateTempPath, i);
 
-      // initialize model weight
-      if(modelWeight < 0) {
-        if (!fs.exists(modelPath)) {
-          log.error("Model path '{}' does not exist; Skipping iteration {} model weight calculation", modelPath.toString(), i);
-          continue;
-        }
-        modelWeight = calculateModelWeight(conf, modelPath);
-      }
-
       // read perplexity
-      double perplexity = readPerplexity(topicModelStateTempPath, i);
+      double perplexity = readPerplexity(conf, topicModelStateTempPath, i);
       if (Double.isNaN(perplexity)) {
         if (!(backfillPerplexity && i % iterationBlockSize == 0)) {
           continue;
@@ -254,9 +243,6 @@ public class CVB0Driver extends AbstractJob {
         }
         perplexity = calculatePerplexity(conf, inputPath, modelPath, i);
       }
-
-      // normalize perplexity
-      perplexity /= modelWeight;
 
       // register and log perplexity
       perplexities.add(perplexity);
@@ -283,14 +269,9 @@ public class CVB0Driver extends AbstractJob {
       runIteration(conf, inputPath, modelInputPath, modelOutputPath, iterationNumber,
           maxIterations, numReduceTasks);
 
-      // ensure model weight has been initialized
-      if(modelWeight < 0) {
-        modelWeight = calculateModelWeight(conf, modelOutputPath);
-      }
-
       // calculate perplexity
       if(testFraction > 0 && iterationNumber % iterationBlockSize == 0) {
-        perplexities.add(calculatePerplexity(conf, inputPath, modelOutputPath, iterationNumber) / modelWeight);
+        perplexities.add(calculatePerplexity(conf, inputPath, modelOutputPath, iterationNumber));
         log.info("Current perplexity = {}", perplexities.get(perplexities.size() - 1));
         log.info("(p_{} - p_{}) / p_0 = {}; target = {}", new Object[]{
             iterationNumber , iterationNumber - iterationBlockSize, rateOfChange(perplexities), convergenceDelta
@@ -334,8 +315,8 @@ public class CVB0Driver extends AbstractJob {
     Job job = new Job(conf, jobName);
     job.setJarByClass(CachingCVB0PerplexityMapper.class);
     job.setMapperClass(CachingCVB0PerplexityMapper.class);
-    job.setCombinerClass(DoubleSumReducer.class);
-    job.setReducerClass(DoubleSumReducer.class);
+    job.setCombinerClass(DualDoubleSumReducer.class);
+    job.setReducerClass(DualDoubleSumReducer.class);
     job.setNumReduceTasks(1);
     job.setOutputKeyClass(NullWritable.class);
     job.setOutputValueClass(DoubleWritable.class);
@@ -349,30 +330,61 @@ public class CVB0Driver extends AbstractJob {
     if(!job.waitForCompletion(true)) {
       throw new InterruptedException("Failed to calculate perplexity for: " + modelPath);
     }
-    return readPerplexity(modelPath.getParent(), iteration);
+    return readPerplexity(conf, modelPath.getParent(), iteration);
   }
 
-  private double readPerplexity(Path topicModelStateTemp, int iteration) throws IOException {
+  /**
+   * Sums keys and values independently.
+   */
+  public static class DualDoubleSumReducer extends
+    Reducer<DoubleWritable, DoubleWritable, DoubleWritable, DoubleWritable> {
+    private final DoubleWritable outKey = new DoubleWritable();
+    private final DoubleWritable outValue = new DoubleWritable();
+
+    @Override
+    public void run(Context context) throws IOException,
+        InterruptedException {
+      double keySum = 0, valueSum = 0;
+      while (context.nextKey()) {
+        keySum += context.getCurrentKey().get();
+        for (DoubleWritable value : context.getValues()) {
+          valueSum += value.get();
+        }
+      }
+      outKey.set(keySum);
+      outValue.set(valueSum);
+      context.write(outKey, outValue);
+    }
+  }
+
+  /**
+   * @param topicModelStateTemp
+   * @param iteration
+   * @return {@code double[2]} where first value is perplexity and second is model weight of those
+   *         documents sampled during perplexity computation, or {@code null} if no perplexity data
+   *         exists for the given iteration.
+   * @throws IOException
+   */
+  private double readPerplexity(Configuration conf, Path topicModelStateTemp, int iteration)
+      throws IOException {
     Path perplexityPath = perplexityPath(topicModelStateTemp, iteration);
-    double perplexity = 0;
     FileSystem fs = FileSystem.get(getConf());
-    if(!fs.exists(perplexityPath)) {
-      log.warn("Perplexity path " + perplexityPath + " does not exist, returning NaN");
+    if (!fs.exists(perplexityPath)) {
+      log.warn("Perplexity path {} does not exist, returning NaN", perplexityPath);
       return Double.NaN;
     }
-    FileStatus[] statuses = fs.listStatus(perplexityPath, PathFilters.partFilter());
-    for(FileStatus status : statuses) {
-      log.debug("Reading perplexity from: " + status.getPath());
-      int i = 0;
-      SequenceFile.Reader reader = new SequenceFile.Reader(fs, status.getPath(), getConf());
-      DoubleWritable d = new DoubleWritable();
-      while(reader.next(NullWritable.get(), d)) {
-        perplexity += d.get();
-        i++;
-      }
-      log.debug("Read " + i + " perplexity values");
+    double perplexity = 0;
+    double modelWeight = 0;
+    long n = 0;
+    for (Pair<DoubleWritable, DoubleWritable> pair : new SequenceFileDirIterable<DoubleWritable, DoubleWritable>(
+        perplexityPath, PathType.LIST, PathFilters.partFilter(), null, true, conf)) {
+      modelWeight += pair.getFirst().get();
+      perplexity += pair.getSecond().get();
+      n++;
     }
-    return perplexity;
+    log.debug("Read {} entries with total perplexity {} and model weight {}", new Object[] { n,
+            perplexity, modelWeight });
+    return perplexity / modelWeight;
 
   }
 
@@ -498,27 +510,6 @@ public class CVB0Driver extends AbstractJob {
       modelPaths[i] = new Path(modelPathNames[i]);
     }
     return modelPaths;
-  }
-
-  private double calculateModelWeight(Configuration conf, Path modelBasePath) throws IOException {
-    log.info("Calculating model weight");
-    Path[] modelPaths = Collections2.transform(Lists.<FileStatus>newArrayList(
-        FileSystem.get(conf).listStatus(modelBasePath, PathFilters.partFilter())),
-        new Function<FileStatus, Path>() {
-          @Override public Path apply(FileStatus fileStatus) {
-            return fileStatus.getPath();
-          }
-    }).toArray(new Path[0]);
-
-    double weight = 0;
-    for(Path modelPath : modelPaths) {
-      for(Pair<IntWritable, VectorWritable> row :
-          new SequenceFileIterable<IntWritable, VectorWritable>(modelPath, true, conf)) {
-        weight += row.getSecond().get().norm(1);
-      }
-    }
-    log.info("Model weight is {}", weight);
-    return weight;
   }
 
   public static void main(String[] args) throws Exception {
