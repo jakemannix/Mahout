@@ -4,7 +4,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Vector;
@@ -16,7 +15,7 @@ import java.io.IOException;
 import java.util.Random;
 
 public class CachingCVB0PerplexityMapper extends
-    Mapper<IntWritable, VectorWritable, NullWritable, DoubleWritable> {
+    Mapper<IntWritable, VectorWritable, DoubleWritable, DoubleWritable> {
   /**
    * Counters for {@link CachingCVB0PerplexityMapper}.
    */
@@ -31,7 +30,7 @@ public class CachingCVB0PerplexityMapper extends
   protected float testFraction;
   protected Random random;
   protected Vector topicVector;
-  protected final NullWritable outKey = NullWritable.get();
+  protected final DoubleWritable outKey = new DoubleWritable();
   protected final DoubleWritable outValue = new DoubleWritable();
 
   @Override
@@ -82,6 +81,7 @@ public class CachingCVB0PerplexityMapper extends
       return;
     }
     context.getCounter(Counters.SAMPLED_DOCUMENTS).increment(1);
+    outKey.set(document.get().norm(1));
     outValue.set(modelTrainer.calculatePerplexity(document.get(), topicVector.assign(1.0 / numTopics), maxIters));
     context.write(outKey, outValue);
   }
