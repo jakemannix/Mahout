@@ -318,7 +318,7 @@ public class CVB0Driver extends AbstractJob {
     job.setCombinerClass(DualDoubleSumReducer.class);
     job.setReducerClass(DualDoubleSumReducer.class);
     job.setNumReduceTasks(1);
-    job.setOutputKeyClass(NullWritable.class);
+    job.setOutputKeyClass(DoubleWritable.class);
     job.setOutputValueClass(DoubleWritable.class);
     job.setInputFormatClass(SequenceFileInputFormat.class);
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
@@ -382,7 +382,7 @@ public class CVB0Driver extends AbstractJob {
       perplexity += pair.getSecond().get();
       n++;
     }
-    log.debug("Read {} entries with total perplexity {} and model weight {}", new Object[] { n,
+    log.info("Read {} entries with total perplexity {} and model weight {}", new Object[] { n,
             perplexity, modelWeight });
     return perplexity / modelWeight;
 
