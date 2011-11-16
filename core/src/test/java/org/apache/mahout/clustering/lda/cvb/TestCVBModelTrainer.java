@@ -241,6 +241,31 @@ public class TestCVBModelTrainer extends TestCase {
     return sum;
   }
 
+  // {
+  //   { 1, 2, 4, 2, 1, 0, 0, 0, 0, 0, 0 },
+  //   { 0, 0, 0, 1, 2, 4, 2, 1, 0, 0, 0 },
+  //   { 0, 0, 0, 0, 0, 0, 1, 2, 4, 2, 1 }
+  // }  numTopics * width = numTerms
+  public static Matrix randomStructuredModel(int numTopics, int numTerms) {
+    Matrix model = new DenseMatrix(numTopics, numTerms);
+    int width = (numTerms + 1) / (numTopics + 1);
+    for(int topic = 0; topic < numTopics; topic++) {
+      int topicCentroid = width * (1+topic);
+      int start = topicCentroid - width;
+      for(int i = 0; i < width * 2 && start + i < model.numCols(); i++) {
+        double v = 1.0 / (1 + Math.abs((i-1) - 0.5 * width));
+        model.set(topic, start + i, v);
+      }
+    }
+    return model;
+  }
+
+  @Test
+  public void testRandomStructuredModel() throws Exception {
+    Matrix model = randomStructuredModel(3, 11);
+
+  }
+
   public Matrix loadOverlappingTrianglesCorpus() throws IOException {
     List<Vector> vectors = Lists.newArrayList(
         Collections2.transform(Collections2.filter(Files.readLines(
