@@ -8,9 +8,9 @@ import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 import com.google.common.primitives.Ints;
-import junit.framework.TestCase;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.mahout.common.MahoutTestCase;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
@@ -20,23 +20,24 @@ import org.apache.mahout.math.MatrixUtils;
 import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.function.Functions;
+import org.apache.mahout.math.function.DoubleFunction;
 import org.apache.mahout.vectorizer.encoders.MurmurHash;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.regex.Pattern;
 
-public class TestCVBModelTrainer extends TestCase {
+public class TestCVBModelTrainer extends MahoutTestCase {
 
-  double eta = 0.001;
-  double alpha = 0.001;
+  double eta = 0.1;
+  double alpha = 0.1;
   String[] dictionary = null;
   int numThreads = 1;
   double modelWeight = 1d;
@@ -197,40 +198,11 @@ public class TestCVBModelTrainer extends TestCase {
       terms[i] = "" + ((char)(i + 97));
     }
     InMemoryCollapsedVariationalBayes0 cvb =
-        new InMemoryCollapsedVariationalBayes0(overlappingTriangles, terms, 5, 0.01, 0.01, 1, 1, 1);
+        new InMemoryCollapsedVariationalBayes0(overlappingTriangles, terms, 5, 0.01, 0.01, 1, 1,
+            1, 1234);
     cvb.setVerbose(true);
     cvb.iterateUntilConvergence(0, 100, 10);
     cvb.writeModel(new Path("/tmp/topics"));
-  }
-
-  @Test
-  public void testLoadTopics() throws Exception {
-    String[] terms = new String[26];
-    for(int i=0; i<terms.length; i++) {
-      terms[i] = "" + ((char)(i + 97));
-    }
-    TopicModel otpModel = new TopicModel(new Configuration(), 0.01, 0.01, terms, 1, 1,
-        new Path("/tmp/topics"));
-    Matrix otpMatrix = otpModel.topicTermCounts();
-    for(int topic = 0; topic < otpMatrix.numRows(); topic++) {
-      otpMatrix.getRow(topic).assign(Functions.mult(1/otpMatrix.getRow(topic).norm(1)));
-    }
-    System.out.println(otpModel.toString());
-  }
-
-  public double klDivergence(Matrix p, Matrix q) {
-    int numTopics = p.numRows();
-    double divergence = 0;
-    for(int topic = 0; topic < numTopics; topic++) {
-      Vector pv = p.getRow(topic).normalize(1);
-      Vector qv = q.getRow(topic).normalize(1);
-      for(Vector.Element e : qv) {
-        if(e.get() > 0 && pv.get(e.index()) > 0) {
-          divergence += pv.get(e.index()) * Math.log(pv.get(e.index()) / e.get());
-        }
-      }
-    }
-    return divergence;
   }
 
   public static double sum(List<Pair<Double,Double>> list, boolean first) {
@@ -241,29 +213,145 @@ public class TestCVBModelTrainer extends TestCase {
     return sum;
   }
 
-  // {
-  //   { 1, 2, 4, 2, 1, 0, 0, 0, 0, 0, 0 },
-  //   { 0, 0, 0, 1, 2, 4, 2, 1, 0, 0, 0 },
-  //   { 0, 0, 0, 0, 0, 0, 1, 2, 4, 2, 1 }
-  // }  numTopics * width = numTerms
   public static Matrix randomStructuredModel(int numTopics, int numTerms) {
+    return randomStructuredModel(numTopics, numTerms, new DoubleFunction() {
+      @Override public double apply(double d) {
+        return 1.0 / (1 + Math.abs(d));
+      }
+    });
+  }
+  // 1 x 1 2 3 4 5 6 6 5 4 3 2
+  public static Matrix randomStructuredModel(int numTopics, int numTerms, DoubleFunction decay) {
     Matrix model = new DenseMatrix(numTopics, numTerms);
-    int width = (numTerms + 1) / (numTopics + 1);
+    int width = numTerms / numTopics;
     for(int topic = 0; topic < numTopics; topic++) {
       int topicCentroid = width * (1+topic);
-      int start = topicCentroid - width;
-      for(int i = 0; i < width * 2 && start + i < model.numCols(); i++) {
-        double v = 1.0 / (1 + Math.abs((i-1) - 0.5 * width));
-        model.set(topic, start + i, v);
+      for(int i = 0; i < numTerms; i++) {
+        int distance = Math.abs(topicCentroid - i);
+        if(distance > numTerms / 2) {
+          distance = numTerms - distance;
+        }
+        double v = decay.apply(distance);
+        model.set(topic, i, v);
       }
     }
     return model;
   }
 
-  @Test
-  public void testRandomStructuredModel() throws Exception {
-    Matrix model = randomStructuredModel(3, 11);
+  public static Matrix sampledCorpus(Matrix matrix, Random random, double eta, double alpha,
+      int numDocs, int numSamples, int numTopicsPerDoc) {
+    TopicModel model = new TopicModel(matrix, eta, alpha, null, 1, 1);
+    Matrix corpus = new SparseRowMatrix(new int[] {numDocs, model.getNumTerms()});
+    for(int docId = 0; docId < numDocs; docId++) {
+      for(int i = 0; i < numTopicsPerDoc; i++) {
+        int topic = random.nextInt(model.getNumTopics());
+        for(int s = 0; s < (float)numSamples / (1 + i); s++) {
+          int term = model.sampleTerm(topic);
+          corpus.set(docId, term, corpus.get(docId, term) + 1);
+        }
+      }
+    }
+    return corpus;
+  }
 
+  @Test
+  public void testInMemoryCVB0() throws Exception {
+    int numGeneratingTopics = 5;
+    int numTerms = 26;
+    String[] terms = new String[26];
+    for(int i=0; i<terms.length; i++) {
+      terms[i] = "" + ((char)(i + 97));
+    }
+    Matrix matrix = randomStructuredModel(numGeneratingTopics, numTerms, new DoubleFunction() {
+      @Override public double apply(double d) {
+        return 1d / Math.pow(d+1, 2);
+      }
+    });
+    model = new TopicModel(matrix, eta, alpha, terms, 1, 1);
+
+    int numDocs = 100;
+    int numSamples = 20;
+    int numTopicsPerDoc = 1;
+
+    Matrix sampledCorpus = sampledCorpus(matrix, new Random(12345), eta, alpha,
+        numDocs, numSamples, numTopicsPerDoc);
+
+    List<Double> perplexities = Lists.newArrayList();
+    int numTrials = 2;
+    for(int numTestTopics = 1; numTestTopics < 2 * numGeneratingTopics; numTestTopics++) {
+      double[] perps = new double[numTrials];
+      for(int trial = 0; trial < numTrials; trial++) {
+        InMemoryCollapsedVariationalBayes0 cvb =
+          new InMemoryCollapsedVariationalBayes0(sampledCorpus, terms, numTestTopics, alpha, eta,
+              2, 1, 0, (trial+1) * 123456L);
+        cvb.setVerbose(true);
+        perps[trial] = cvb.iterateUntilConvergence(0, 20, 0, 0.2);
+        System.out.println(perps[trial]);
+      }
+      Arrays.sort(perps);
+      System.out.println(Arrays.toString(perps));
+      perplexities.add(perps[0]);
+    }
+    System.out.println(Joiner.on(",").join(perplexities));
+  }
+
+  @Test
+  public void testRandomStructuredModelViaMR() throws Exception {
+    int numGeneratingTopics = 3;
+    int numTerms = 9;
+    Matrix matrix = randomStructuredModel(numGeneratingTopics, numTerms, new DoubleFunction() {
+      @Override public double apply(double d) {
+        return 1d / Math.pow(d+1, 3);
+      }
+    });
+    model = new TopicModel(matrix, eta, alpha, null, 1, 1);
+
+    int numDocs = 500;
+    int numSamples = 10;
+    int numTopicsPerDoc = 1;
+
+    Matrix sampledCorpus = sampledCorpus(matrix, new Random(1234), eta, alpha,
+        numDocs, numSamples, numTopicsPerDoc);
+
+    Path sampleCorpusPath = getTestTempDirPath("corpus");
+    MatrixUtils.write(sampleCorpusPath, new Configuration(), sampledCorpus);
+    int numIterations = 5;
+    List<Double> perplexities = Lists.newArrayList();
+    int startTopic = numGeneratingTopics - 1;
+    int numTestTopics = startTopic;
+    while(numTestTopics < numGeneratingTopics + 2) {
+      CVB0Driver driver = new CVB0Driver();
+      Path topicModelStateTempPath = getTestTempDirPath("topicTemp" + numTestTopics);
+      Configuration conf = new Configuration();
+      driver.run(conf, sampleCorpusPath, null, numTestTopics, numTerms,
+          alpha, eta, numIterations, 1, 0, null, null, topicModelStateTempPath, 1234, 0.2f, 2,
+          1, 10, 1, false);
+      perplexities.add(lowestPerplexity(conf, topicModelStateTempPath));
+      numTestTopics++;
+    }
+    int bestTopic = -1;
+    double lowestPerplexity = Double.MAX_VALUE;
+    for(int t = 0; t < perplexities.size(); t++) {
+      if(perplexities.get(t) < lowestPerplexity) {
+        lowestPerplexity = perplexities.get(t);
+        bestTopic = t + startTopic;
+      }
+    }
+    assertEquals("The optimal number of topics is not that of the generating distribution",
+        bestTopic, numGeneratingTopics);
+    System.out.println("Perplexities: " + Joiner.on(", ").join(perplexities));
+  }
+
+  private static double lowestPerplexity(Configuration conf, Path topicModelTemp)
+      throws IOException {
+    double lowest = Double.MAX_VALUE;
+    double current;
+    int iteration = 2;
+    while(!Double.isNaN(current = CVB0Driver.readPerplexity(conf, topicModelTemp, iteration))) {
+      lowest = Math.min(current, lowest);
+      iteration++;
+    }
+    return lowest;
   }
 
   public Matrix loadOverlappingTrianglesCorpus() throws IOException {

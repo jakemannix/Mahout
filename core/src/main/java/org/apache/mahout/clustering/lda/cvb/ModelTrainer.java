@@ -65,15 +65,26 @@ public class ModelTrainer {
   }
 
   public double calculatePerplexity(VectorIterable matrix, VectorIterable docTopicCounts) {
+    return calculatePerplexity(matrix, docTopicCounts, 0);
+  }
+
+  public double calculatePerplexity(VectorIterable matrix, VectorIterable docTopicCounts,
+      double testFraction) {
     Iterator<MatrixSlice> docIterator = matrix.iterator();
     Iterator<MatrixSlice> docTopicIterator = docTopicCounts.iterator();
     double perplexity = 0;
     double matrixNorm = 0;
     while(docIterator.hasNext() && docTopicIterator.hasNext()) {
-      Vector document = docIterator.next().vector();
-      Vector topicDist = docTopicIterator.next().vector();
-      perplexity += readModel.perplexity(document, topicDist);
-      matrixNorm += document.norm(1);
+      MatrixSlice docSlice = docIterator.next();
+      MatrixSlice topicSlice = docTopicIterator.next();
+      int docId = docSlice.index();
+      Vector document = docSlice.vector();
+      Vector topicDist = topicSlice.vector();
+      if(testFraction == 0 || docId % ((int)1/testFraction) == 0) {
+        trainSync(document, topicDist, false, 10);
+        perplexity += readModel.perplexity(document, topicDist);
+        matrixNorm += document.norm(1);
+      }
     }
     return perplexity / matrixNorm;
   }
@@ -122,7 +133,8 @@ public class ModelTrainer {
           }
         }
       }
-    }     stop();
+    }
+    stop();
   }
 
   public void batchTrain(Map<Vector, Vector> batch, boolean update, int numDocTopicsIters) {
@@ -158,6 +170,13 @@ public class ModelTrainer {
         log.warn("Interrupted waiting to submit document to work queue: " + document, e);
       }
     }
+  }
+
+  public void trainSync(Vector document, Vector docTopicCounts, boolean update,
+      int numDocTopicIters) {
+    new TrainerRunnable(readModel,
+            update ? writeModel : null, document, docTopicCounts, new SparseRowMatrix(new int[]{
+            numTopics, numTerms}, true), numDocTopicIters).run();
   }
 
   public double calculatePerplexity(Vector document, Vector docTopicCounts, int numDocTopicIters) {

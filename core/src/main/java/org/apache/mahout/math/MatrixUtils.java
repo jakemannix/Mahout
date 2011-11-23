@@ -19,6 +19,7 @@ public class MatrixUtils {
   public static void write(Path outputDir, Configuration conf, VectorIterable matrix)
       throws IOException {
     FileSystem fs = outputDir.getFileSystem(conf);
+    fs.delete(outputDir, true);
     SequenceFile.Writer writer = SequenceFile.createWriter(fs, conf, outputDir,
         IntWritable.class, VectorWritable.class);
     IntWritable topic = new IntWritable();

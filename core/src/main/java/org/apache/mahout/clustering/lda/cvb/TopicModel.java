@@ -192,8 +192,8 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     String buf = "";
     for(int x = 0; x < numTopics; x++) {
       String v = dictionary != null
-          ? vectorToSortedString(topicTermCounts.getRow(x), dictionary)
-          : topicTermCounts.getRow(x).asFormatString();
+          ? vectorToSortedString(topicTermCounts.getRow(x).normalize(1), dictionary)
+          : topicTermCounts.getRow(x).normalize(1).asFormatString();
       buf += v + "\n";
     }
     return buf;
