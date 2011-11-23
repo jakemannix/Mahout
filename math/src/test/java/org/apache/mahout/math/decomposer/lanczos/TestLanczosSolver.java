@@ -36,11 +36,11 @@ public final class TestLanczosSolver extends SolverTest {
   public void testEigenvalueCheck() throws Exception {
     int size = 100;
     Matrix m = randomHierarchicalSymmetricMatrix(size);
-    int desiredRank = 80;
 
     Vector initialVector = new DenseVector(size);
-    initialVector.assign(1d / Math.sqrt(size));
+    initialVector.assign(1.0 / Math.sqrt(size));
     LanczosSolver solver = new LanczosSolver();
+    int desiredRank = 80;
     LanczosState state = new LanczosState(m, size, desiredRank, initialVector);
     // set initial vector?
     solver.solve(state, desiredRank, true);
@@ -52,7 +52,7 @@ public final class TestLanczosSolver extends SolverTest {
     for(int i = 0; i < fractionOfEigensExpectedGood * desiredRank; i++) {
       double s = state.getSingularValue(desiredRank - i - 1);
       double e = eigenvalues.get(eigenvalues.size() - i - 1);
-      log.info(i + " : L = {}, E = {}", s, e);
+      log.info("{} : L = {}, E = {}", new Object[] {i, s, e});
       assertTrue("Singular value differs from eigenvalue", Math.abs((s-e)/e) < ERROR_TOLERANCE);
       Vector v = state.getRightSingularVector(i);
       Vector v2 = decomposition.getV().viewColumn(eigenvalues.size() - i - 1).toVector();
@@ -68,9 +68,9 @@ public final class TestLanczosSolver extends SolverTest {
     int numRows = 800;
     int numColumns = 500;
     Matrix corpus = randomHierarchicalMatrix(numRows, numColumns, false);
-    int rank = 50;
     Vector initialVector = new DenseVector(numColumns);
-    initialVector.assign(1d / Math.sqrt(numColumns));
+    initialVector.assign(1.0 / Math.sqrt(numColumns));
+    int rank = 50;
     LanczosState state = new LanczosState(corpus, numColumns, rank, initialVector);
     long time = timeLanczos(corpus, state, rank, false);
     assertTrue("Lanczos taking too long!  Are you in the debugger? :)", time < 10000);
@@ -85,9 +85,9 @@ public final class TestLanczosSolver extends SolverTest {
   public void testLanczosSolverSymmetric() throws Exception {
     int numCols = 500;
     Matrix corpus = randomHierarchicalSymmetricMatrix(numCols);
-    int rank = 30;
     Vector initialVector = new DenseVector(numCols);
-    initialVector.assign(1d / Math.sqrt(numCols));
+    initialVector.assign(1.0 / Math.sqrt(numCols));
+    int rank = 30;
     LanczosState state = new LanczosState(corpus, numCols, rank, initialVector);
     long time = timeLanczos(corpus, state, rank, true);
     assertTrue("Lanczos taking too long!  Are you in the debugger? :)", time < 10000);

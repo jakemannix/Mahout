@@ -39,6 +39,7 @@ import org.apache.mahout.clustering.ClusterObservations;
 import org.apache.mahout.clustering.WeightedPropertyVectorWritable;
 import org.apache.mahout.clustering.WeightedVectorWritable;
 import org.apache.mahout.common.AbstractJob;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.distance.DistanceMeasure;
@@ -96,8 +97,7 @@ public class KMeansDriver extends AbstractJob {
     if (hasOption(DefaultOptionCreator.OVERWRITE_OPTION)) {
       HadoopUtil.delete(getConf(), output);
     }
-    ClassLoader ccl = Thread.currentThread().getContextClassLoader();
-    DistanceMeasure measure = ccl.loadClass(measureClass).asSubclass(DistanceMeasure.class).newInstance();
+    DistanceMeasure measure = ClassUtils.instantiateAs(measureClass, DistanceMeasure.class);
 
     if (hasOption(DefaultOptionCreator.NUM_CLUSTERS_OPTION)) {
       clusters = RandomSeedGenerator.buildRandom(getConf(), input, clusters, Integer
@@ -259,7 +259,7 @@ public class KMeansDriver extends AbstractJob {
     boolean converged = false;
     int iteration = 1;
     while (!converged && iteration <= maxIterations) {
-      log.info("K-Means Iteration: " + iteration);
+      log.info("K-Means Iteration: {}", iteration);
       FileSystem fs = FileSystem.get(input.toUri(), conf);
       for (VectorWritable value
            : new SequenceFileDirValueIterable<VectorWritable>(input,
@@ -277,13 +277,15 @@ public class KMeansDriver extends AbstractJob {
                                                            Cluster.class);
       try {
         for (Cluster cluster : clusters) {
-          log.debug("Writing Cluster:{} center:{} numPoints:{} radius:{} to: {}",
-                    new Object[] {
-                        cluster.getId(),
-                        AbstractCluster.formatVector(cluster.getCenter(), null),
-                        cluster.getNumPoints(),
-                        AbstractCluster.formatVector(cluster.getRadius(), null), clustersOut.getName()
-                    });
+          if (log.isDebugEnabled()) {
+            log.debug("Writing Cluster:{} center:{} numPoints:{} radius:{} to: {}",
+                      new Object[] {
+                          cluster.getId(),
+                          AbstractCluster.formatVector(cluster.getCenter(), null),
+                          cluster.getNumPoints(),
+                          AbstractCluster.formatVector(cluster.getRadius(), null), clustersOut.getName()
+                      });
+          }
           writer.append(new Text(cluster.getIdentifier()), cluster);
         }
       } finally {
@@ -292,7 +294,9 @@ public class KMeansDriver extends AbstractJob {
       clustersIn = clustersOut;
       iteration++;
     }
-    return clustersIn;
+    Path finalClustersIn = new Path(output, AbstractCluster.CLUSTERS_DIR + (iteration-1) + org.apache.mahout.clustering.Cluster.FINAL_ITERATION_SUFFIX);
+    FileSystem.get(conf).rename(new Path(output, AbstractCluster.CLUSTERS_DIR + (iteration-1)), finalClustersIn);
+    return finalClustersIn;
   }
 
   private static Path buildClustersMR(Configuration conf,
@@ -314,7 +318,9 @@ public class KMeansDriver extends AbstractJob {
       clustersIn = clustersOut;
       iteration++;
     }
-    return clustersIn;
+    Path finalClustersIn = new Path(output, AbstractCluster.CLUSTERS_DIR + (iteration-1) + "-final");
+    FileSystem.get(conf).rename(new Path(output, AbstractCluster.CLUSTERS_DIR + (iteration-1)), finalClustersIn);
+    return finalClustersIn;
   }
 
   /**

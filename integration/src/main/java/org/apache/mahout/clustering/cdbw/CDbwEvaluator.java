@@ -30,6 +30,7 @@ import org.apache.mahout.clustering.GaussianAccumulator;
 import org.apache.mahout.clustering.OnlineGaussianAccumulator;
 import org.apache.mahout.clustering.evaluation.RepresentativePointsDriver;
 import org.apache.mahout.clustering.evaluation.RepresentativePointsMapper;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.distance.DistanceMeasure;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.common.iterator.sequencefile.PathType;
@@ -82,11 +83,9 @@ public class CDbwEvaluator {
    * @param clustersIn
    *            a String path to the input clusters directory
    */
-  public CDbwEvaluator(Configuration conf, Path clustersIn)
-    throws ClassNotFoundException, InstantiationException, IllegalAccessException {
-    ClassLoader ccl = Thread.currentThread().getContextClassLoader();
-    measure = ccl.loadClass(conf.get(RepresentativePointsDriver.DISTANCE_MEASURE_KEY)).asSubclass(DistanceMeasure.class)
-        .newInstance();
+  public CDbwEvaluator(Configuration conf, Path clustersIn) {
+    measure = ClassUtils.instantiateAs(conf.get(RepresentativePointsDriver.DISTANCE_MEASURE_KEY),
+                                       DistanceMeasure.class);
     representativePoints = RepresentativePointsMapper.getRepresentativePoints(conf);
     clusters = loadClusters(conf, clustersIn);
     for (Integer cId : representativePoints.keySet()) {
@@ -322,11 +321,13 @@ public class CDbwEvaluator {
           density = minDistance * interDensity / stdSum;
         }
 
-        log.debug("minDistance[{},{}]={}", new Object[] {cI, cJ, minDistance});
-        log.debug("stDev[{}]={}", cI, stDevI);
-        log.debug("stDev[{}]={}", cJ, stDevJ);
-        log.debug("interDensity[{},{}]={}", new Object[] {cI, cJ, interDensity});
-        log.debug("density[{},{}]={}", new Object[] {cI, cJ, density});
+        if (log.isDebugEnabled()) {
+          log.debug("minDistance[{},{}]={}", new Object[] {cI, cJ, minDistance});
+          log.debug("stDev[{}]={}", cI, stDevI);
+          log.debug("stDev[{}]={}", cJ, stDevJ);
+          log.debug("interDensity[{},{}]={}", new Object[] {cI, cJ, interDensity});
+          log.debug("density[{},{}]={}", new Object[] {cI, cJ, density});
+        }
 
         sum += density;
       }

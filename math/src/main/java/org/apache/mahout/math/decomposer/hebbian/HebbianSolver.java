@@ -23,7 +23,6 @@ import java.util.Random;
 
 import com.google.common.collect.Lists;
 import org.apache.mahout.common.RandomUtils;
-import org.apache.mahout.math.AbstractMatrix;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
@@ -173,8 +172,8 @@ public class HebbianSolver {
     int cols = corpus.numCols();
     Matrix eigens = new DenseMatrix(desiredRank, cols);
     List<Double> eigenValues = Lists.newArrayList();
-    log.info("Finding " + desiredRank + " singular vectors of matrix with " + corpus.numRows() + " rows, via Hebbian");
-    /**
+    log.info("Finding {} singular vectors of matrix with {} rows, via Hebbian", desiredRank, corpus.numRows());
+    /*
      * The corpusProjections matrix is a running cache of the residual projection of each corpus vector against all
      * of the previously found singular vectors.  Without this, if multiple passes over the data is made (per
      * singular vector), recalculating these projections eventually dominates the computational complexity of the
@@ -187,13 +186,13 @@ public class HebbianSolver {
       Vector previousEigen = null;
       while (hasNotConverged(currentEigen, corpus, state)) {
         int randomStartingIndex = getRandomStartingIndex(corpus, eigens);
-        Vector initialTrainingVector = corpus.getRow(randomStartingIndex);
+        Vector initialTrainingVector = corpus.viewRow(randomStartingIndex);
         state.setTrainingIndex(randomStartingIndex);
         updater.update(currentEigen, initialTrainingVector, state);
         for (int corpusRow = 0; corpusRow < corpus.numRows(); corpusRow++) {
           state.setTrainingIndex(corpusRow);
           if (corpusRow != randomStartingIndex) {
-            updater.update(currentEigen, corpus.getRow(corpusRow), state);
+            updater.update(currentEigen, corpus.viewRow(corpusRow), state);
           }
         }
         state.setFirstPass(false);
@@ -247,7 +246,7 @@ public class HebbianSolver {
     do {
       double r = rng.nextDouble();
       index = (int) (r * corpus.numRows());
-      v = corpus.getRow(index);
+      v = corpus.viewRow(index);
     } while (v == null || v.norm(2) == 0 || v.getNumNondefaultElements() < 5);
     return index;
   }
@@ -275,13 +274,13 @@ public class HebbianSolver {
      * Step 2: zero-out the helper vector because it has already helped.
      */
     for (int i = 0; i < state.getNumEigensProcessed(); i++) {
-      Vector previousEigen = previousEigens.getRow(i);
+      Vector previousEigen = previousEigens.viewRow(i);
       currentPseudoEigen.assign(previousEigen, new PlusMult(-state.getHelperVector().get(i)));
       state.getHelperVector().set(i, 0);
     }
     if (DEBUG && currentPseudoEigen.norm(2) > 0) {
       for (int i = 0; i < state.getNumEigensProcessed(); i++) {
-        Vector previousEigen = previousEigens.getRow(i);
+        Vector previousEigen = previousEigens.viewRow(i);
         log.info("dot with previous: {}", previousEigen.dot(currentPseudoEigen) / currentPseudoEigen.norm(2));
       }
     }
@@ -311,7 +310,7 @@ public class HebbianSolver {
 
     String corpusDir = props.getProperty("solver.input.dir");
     String outputDir = props.getProperty("solver.output.dir");
-    if (corpusDir == null || corpusDir.length() == 0 || outputDir == null || outputDir.length() == 0) {
+    if (corpusDir == null || corpusDir.isEmpty() || outputDir == null || outputDir.isEmpty()) {
       log.error("{} must contain values for solver.input.dir and solver.output.dir", propertiesFile);
       return;
     }
@@ -319,7 +318,7 @@ public class HebbianSolver {
     int rank = Integer.parseInt(props.getProperty("solver.output.desiredRank"));
     double convergence = Double.parseDouble(props.getProperty("solver.convergence"));
     int maxPasses = Integer.parseInt(props.getProperty("solver.maxPasses"));
-    int numThreads = Integer.parseInt(props.getProperty("solver.verifier.numThreads"));
+    //int numThreads = Integer.parseInt(props.getProperty("solver.verifier.numThreads"));
 
     HebbianUpdater updater = new HebbianUpdater();
     SingularVectorVerifier verifier = new AsyncEigenVerifier();
@@ -336,7 +335,7 @@ public class HebbianSolver {
     TrainingState finalState = solver.solve(corpus, rank);
     long time = (System.currentTimeMillis() - now) / 1000;
     log.info("Solved {} eigenVectors in {} seconds.  Persisted to {}",
-             new Object[] {finalState.getCurrentEigens().size()[AbstractMatrix.ROW], time, outputDir});
+             new Object[] {finalState.getCurrentEigens().rowSize(), time, outputDir});
   }
 
   

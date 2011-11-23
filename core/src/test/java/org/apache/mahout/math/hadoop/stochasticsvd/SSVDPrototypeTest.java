@@ -19,28 +19,26 @@ package org.apache.mahout.math.hadoop.stochasticsvd;
 
 import java.util.Random;
 
-import junit.framework.Assert;
-
 import org.apache.mahout.common.MahoutTestCase;
 import org.apache.mahout.common.RandomUtils;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.function.DoubleFunction;
+import org.apache.mahout.math.hadoop.stochasticsvd.qr.GivensThinSolver;
 import org.junit.Test;
 
 /** 
  * Tests parts of of Stochastic SVD solver code in local mode
  * using "prototype" code (class that simulates processes 
  * actually happenning in the MR jobs).
- * 
- * 
  */
 public class SSVDPrototypeTest extends MahoutTestCase {
 
   private static final double SCALE = 1000;
   private static final double SVD_EPSILON = 1.0e-10;
 
+  @Test
   public void testSSVDPrototype() throws Exception {
     SSVDPrototype.main(null);
   }
@@ -85,24 +83,23 @@ public class SSVDPrototypeTest extends MahoutTestCase {
     int n = mtx.columnSize();
     int rank = 0;
     for (int i = 0; i < n; i++) {
-      Vector ei = mtx.getColumn(i);
+      Vector ei = mtx.viewColumn(i);
 
       double norm = ei.norm(2);
 
       if (Math.abs(1 - norm) < epsilon) {
         rank++;
       } else {
-        Assert.assertTrue(Math.abs(norm) < epsilon);
+        assertTrue(Math.abs(norm) < epsilon);
       }
 
       for (int j = 0; j <= i; j++) {
-        Vector e_j = mtx.getColumn(j);
+        Vector e_j = mtx.viewColumn(j);
         double dot = ei.dot(e_j);
-        Assert
-            .assertTrue(Math.abs((i == j && rank > j ? 1 : 0) - dot) < epsilon);
+        assertTrue(Math.abs((i == j && rank > j ? 1 : 0) - dot) < epsilon);
       }
     }
-    Assert.assertTrue((!insufficientRank && rank == n) || (insufficientRank && rank < n));
+    assertTrue((!insufficientRank && rank == n) || (insufficientRank && rank < n));
 
   }
 

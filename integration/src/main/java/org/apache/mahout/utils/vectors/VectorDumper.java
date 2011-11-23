@@ -143,9 +143,12 @@ public final class VectorDumper {
         boolean namesAsComments = cmdLine.hasOption(namesAsCommentsOpt);
         boolean transposeKeyValue = cmdLine.hasOption(vectorAsKeyOpt);
         Writer writer;
+        boolean shouldClose;
         if (cmdLine.hasOption(outputOpt)) {
+          shouldClose = true;
           writer = Files.newWriter(new File(cmdLine.getValue(outputOpt).toString()), Charsets.UTF_8);
         } else {
+          shouldClose = false;
           writer = new OutputStreamWriter(System.out);
         }
         try {
@@ -211,8 +214,13 @@ public final class VectorDumper {
             itemCount++;
           }
           }
+
+          writer.flush();
+
         } finally {
-          Closeables.closeQuietly(writer);
+          if (shouldClose) {
+            Closeables.closeQuietly(writer);
+          }
         }
 
       }

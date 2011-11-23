@@ -21,6 +21,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
@@ -43,9 +44,10 @@ import java.util.Iterator;
 import java.util.Map;
 
 /**
- * TODO: rewrite to use helpful combiner.
+ * Transpose a matrix
  */
 public class TransposeJob extends AbstractJob {
+
   public static final String NUM_ROWS_KEY = "SparseRowMatrix.numRows";
 
   public static void main(String[] args) throws Exception {
@@ -57,18 +59,15 @@ public class TransposeJob extends AbstractJob {
     addInputOption();
     addOption("numRows", "nr", "Number of rows of the input matrix");
     addOption("numCols", "nc", "Number of columns of the input matrix");
-    Map<String,String> parsedArgs = parseArguments(strings);
+    Map<String, String> parsedArgs = parseArguments(strings);
     if (parsedArgs == null) {
-      // FIXME
-      return 0;
+      return -1;
     }
 
-    Path inputPath = getInputPath();
-    Path outputTmpPath = new Path(parsedArgs.get("--tempDir"));
     int numRows = Integer.parseInt(parsedArgs.get("--numRows"));
     int numCols = Integer.parseInt(parsedArgs.get("--numCols"));
 
-    DistributedRowMatrix matrix = new DistributedRowMatrix(inputPath, outputTmpPath, numRows, numCols);
+    DistributedRowMatrix matrix = new DistributedRowMatrix(getInputPath(), getTempPath(), numRows, numCols);
     matrix.setConf(new Configuration(getConf()));
     matrix.transpose();
 
@@ -80,7 +79,7 @@ public class TransposeJob extends AbstractJob {
                                                     int numInputRows) throws IOException {
     return buildTransposeJobConf(new Configuration(), matrixInputPath, matrixOutputPath, numInputRows);
   }
-  
+
   public static Configuration buildTransposeJobConf(Configuration initialConf,
                                                     Path matrixInputPath,
                                                     Path matrixOutputPath,
@@ -95,10 +94,12 @@ public class TransposeJob extends AbstractJob {
     FileInputFormat.addInputPath(conf, matrixInputPath);
     conf.setInputFormat(SequenceFileInputFormat.class);
     FileOutputFormat.setOutputPath(conf, matrixOutputPath);
+    System.out.println("OUTPUT --> " + matrixOutputPath.toString());
     conf.setMapperClass(TransposeMapper.class);
-    conf.setReducerClass(TransposeReducer.class);
     conf.setMapOutputKeyClass(IntWritable.class);
-    conf.setMapOutputValueClass(DistributedRowMatrix.MatrixEntryWritable.class);
+    conf.setMapOutputValueClass(VectorWritable.class);
+    conf.setCombinerClass(MergeVectorsCombiner.class);
+    conf.setReducerClass(MergeVectorsReducer.class);
     conf.setOutputFormat(SequenceFileOutputFormat.class);
     conf.setOutputKeyClass(IntWritable.class);
     conf.setOutputValueClass(VectorWritable.class);
@@ -106,29 +107,7 @@ public class TransposeJob extends AbstractJob {
   }
 
   public static class TransposeMapper extends MapReduceBase
-      implements Mapper<IntWritable,VectorWritable,IntWritable,DistributedRowMatrix.MatrixEntryWritable> {
-
-    @Override
-    public void map(IntWritable r,
-                    VectorWritable v,
-                    OutputCollector<IntWritable, DistributedRowMatrix.MatrixEntryWritable> out,
-                    Reporter reporter) throws IOException {
-      DistributedRowMatrix.MatrixEntryWritable entry = new DistributedRowMatrix.MatrixEntryWritable();
-      Iterator<Vector.Element> it = v.get().iterateNonZero();
-      int row = r.get();
-      entry.setCol(row);
-      entry.setRow(-1);  // output "row" is captured in the key
-      while (it.hasNext()) {
-        Vector.Element e = it.next();
-        r.set(e.index());
-        entry.setVal(e.get());
-        out.collect(r, entry);
-      }
-    }
-  }
-
-  public static class TransposeReducer extends MapReduceBase
-      implements Reducer<IntWritable,DistributedRowMatrix.MatrixEntryWritable,IntWritable,VectorWritable> {
+          implements Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
 
     private int newNumCols;
 
@@ -138,17 +117,38 @@ public class TransposeJob extends AbstractJob {
     }
 
     @Override
-    public void reduce(IntWritable outRow,
-                       Iterator<DistributedRowMatrix.MatrixEntryWritable> it,
-                       OutputCollector<IntWritable, VectorWritable> out,
-                       Reporter reporter) throws IOException {
-      RandomAccessSparseVector tmp = new RandomAccessSparseVector(newNumCols, 100);
+    public void map(IntWritable r, VectorWritable v, OutputCollector<IntWritable, VectorWritable> out,
+                    Reporter reporter) throws IOException {
+      int row = r.get();
+      Iterator<Vector.Element> it = v.get().iterateNonZero();
       while (it.hasNext()) {
-        DistributedRowMatrix.MatrixEntryWritable e = it.next();
-        tmp.setQuick(e.getCol(), e.getVal());
+        Vector.Element e = it.next();
+        RandomAccessSparseVector tmp = new RandomAccessSparseVector(newNumCols, 1);
+        tmp.setQuick(row, e.get());
+        r.set(e.index());
+        out.collect(r, new VectorWritable(tmp));
       }
-      SequentialAccessSparseVector outVector = new SequentialAccessSparseVector(tmp);
-      out.collect(outRow, new VectorWritable(outVector));
+    }
+  }
+
+  public static class MergeVectorsCombiner extends MapReduceBase
+          implements Reducer<WritableComparable<?>, VectorWritable, WritableComparable<?>, VectorWritable> {
+
+    @Override
+    public void reduce(WritableComparable<?> key, Iterator<VectorWritable> vectors,
+                       OutputCollector<WritableComparable<?>, VectorWritable> out, Reporter reporter) throws IOException {
+      out.collect(key, VectorWritable.merge(vectors));
+    }
+  }
+
+  public static class MergeVectorsReducer extends MapReduceBase
+          implements Reducer<WritableComparable<?>, VectorWritable, WritableComparable<?>, VectorWritable> {
+
+    @Override
+    public void reduce(WritableComparable<?> key, Iterator<VectorWritable> vectors,
+                       OutputCollector<WritableComparable<?>, VectorWritable> out, Reporter reporter) throws IOException {
+      Vector merged = VectorWritable.merge(vectors).get();
+      out.collect(key, new VectorWritable(new SequentialAccessSparseVector(merged)));
     }
   }
 }

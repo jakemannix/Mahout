@@ -26,7 +26,6 @@ import org.apache.mahout.math.decomposer.lanczos.LanczosState;
 import org.apache.mahout.math.hadoop.DistributedRowMatrix;
 import org.apache.mahout.math.hadoop.TestDistributedRowMatrix;
 import org.junit.Before;
-import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
@@ -114,6 +113,8 @@ public final class TestDistributedLanczosSolver extends MahoutTestCase {
     counter++;
   }
 
+  // TODO when this can be made to run in under 20 minutes, re-enable
+  /*
   @Test
   public void testDistributedLanczosSolver() throws Exception {
     doTestDistributedLanczosSolver(true, 30);
@@ -121,5 +122,6 @@ public final class TestDistributedLanczosSolver extends MahoutTestCase {
     doTestResumeIteration(true);
     doTestResumeIteration(false);
   }
+   */
 
 }

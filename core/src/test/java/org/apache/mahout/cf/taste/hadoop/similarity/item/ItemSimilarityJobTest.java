@@ -21,27 +21,23 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.util.Arrays;
-import java.util.List;
+import java.util.regex.Pattern;
 
 import com.google.common.base.Charsets;
 import com.google.common.io.Files;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.mahout.cf.taste.hadoop.EntityEntityWritable;
 import org.apache.mahout.cf.taste.impl.TasteTestCase;
 import org.apache.mahout.math.RandomAccessSparseVector;
-import org.apache.mahout.math.VarIntWritable;
-import org.apache.mahout.math.VarLongWritable;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
-import org.apache.mahout.math.hadoop.similarity.vector.DistributedTanimotoCoefficientVectorSimilarity;
-import org.apache.mahout.math.hadoop.similarity.vector.DistributedUncenteredZeroAssumingCosineVectorSimilarity;
+import org.apache.mahout.math.hadoop.similarity.cooccurrence.measures.CosineSimilarity;
+import org.apache.mahout.math.hadoop.similarity.cooccurrence.measures.TanimotoCoefficientSimilarity;
 import org.apache.mahout.math.map.OpenIntLongHashMap;
-import org.easymock.IArgumentMatcher;
 import org.easymock.EasyMock;
 import org.junit.Test;
 
@@ -51,8 +47,10 @@ import org.junit.Test;
  */
 public final class ItemSimilarityJobTest extends TasteTestCase {
 
+  private static final Pattern TAB = Pattern.compile("\t");
+
   /**
-   * Tests {@link MostSimilarItemPairsMapper}
+   * Tests {@link ItemSimilarityJob.MostSimilarItemPairsMapper}
    */
   @Test
   public void testMostSimilarItemsPairsMapper() throws Exception {
@@ -71,10 +69,9 @@ public final class ItemSimilarityJobTest extends TasteTestCase {
 
     Vector vector = new RandomAccessSparseVector(Integer.MAX_VALUE);
     vector.set(12, 0.2);
-    vector.set(34, 1.0);
     vector.set(56, 0.9);
 
-    MostSimilarItemPairsMapper mapper = new MostSimilarItemPairsMapper();
+    ItemSimilarityJob.MostSimilarItemPairsMapper mapper = new ItemSimilarityJob.MostSimilarItemPairsMapper();
     setField(mapper, "indexItemIDMap", indexItemIDMap);
     setField(mapper, "maxSimilarItemsPerItem", 1);
 
@@ -84,7 +81,7 @@ public final class ItemSimilarityJobTest extends TasteTestCase {
   }
 
   /**
-   * Tests {@link MostSimilarItemPairsReducer}
+   * Tests {@link ItemSimilarityJob.MostSimilarItemPairsReducer}
    */
   @Test
   public void testMostSimilarItemPairsReducer() throws Exception {
@@ -95,7 +92,7 @@ public final class ItemSimilarityJobTest extends TasteTestCase {
 
     EasyMock.replay(context);
 
-    new MostSimilarItemPairsReducer().reduce(new EntityEntityWritable(123L, 456L),
+    new ItemSimilarityJob.MostSimilarItemPairsReducer().reduce(new EntityEntityWritable(123L, 456L),
         Arrays.asList(new DoubleWritable(0.5), new DoubleWritable(0.5)), context);
 
     EasyMock.verify(context);
@@ -138,7 +135,7 @@ public final class ItemSimilarityJobTest extends TasteTestCase {
     similarityJob.setConf(conf);
 
     similarityJob.run(new String[] { "--tempDir", tmpDir.getAbsolutePath(), "--similarityClassname",
-       DistributedUncenteredZeroAssumingCosineVectorSimilarity.class.getName() });
+       CosineSimilarity.class.getName() });
 
     File outPart = outputDir.listFiles(new FilenameFilter() {
       @Override
@@ -152,7 +149,7 @@ public final class ItemSimilarityJobTest extends TasteTestCase {
     int currentLine = 1;
     while ( (line = reader.readLine()) != null) {
 
-      String[] tokens = line.split("\t");
+      String[] tokens = TAB.split(line);
 
       long itemAID = Long.parseLong(tokens[0]);
       long itemBID = Long.parseLong(tokens[1]);
@@ -234,7 +231,7 @@ public final class ItemSimilarityJobTest extends TasteTestCase {
     similarityJob.setConf(conf);
 
     similarityJob.run(new String[] { "--tempDir", tmpDir.getAbsolutePath(), "--similarityClassname",
-        DistributedTanimotoCoefficientVectorSimilarity.class.getName(), "--maxSimilaritiesPerItem", "1" });
+        TanimotoCoefficientSimilarity.class.getName(), "--maxSimilaritiesPerItem", "1" });
 
     File outPart = outputDir.listFiles(new FilenameFilter() {
       @Override
@@ -248,7 +245,7 @@ public final class ItemSimilarityJobTest extends TasteTestCase {
     int currentLine = 1;
     while ((line = reader.readLine()) != null) {
 
-      String[] tokens = line.split("\t");
+      String[] tokens = TAB.split(line);
 
       long itemAID = Long.parseLong(tokens[0]);
       long itemBID = Long.parseLong(tokens[1]);

@@ -17,8 +17,12 @@
 
 package org.apache.mahout.cf.taste.hadoop;
 
+import com.google.common.io.Closeables;
 import com.google.common.primitives.Longs;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
@@ -28,6 +32,7 @@ import org.apache.mahout.math.VarIntWritable;
 import org.apache.mahout.math.VarLongWritable;
 import org.apache.mahout.math.map.OpenIntLongHashMap;
 
+import java.io.IOException;
 import java.util.regex.Pattern;
 
 /**
@@ -38,8 +43,7 @@ public final class TasteHadoopUtils {
   /** Standard delimiter of textual preference data */
   private static final Pattern PREFERENCE_TOKEN_DELIMITER = Pattern.compile("[\t,]");
 
-  private TasteHadoopUtils() {
-  }
+  private TasteHadoopUtils() {}
 
   /**
    * Splits a preference data line into string tokens
@@ -72,5 +76,7 @@ public final class TasteHadoopUtils {
     }
     return indexItemIDMap;
   }
+
+
 
 }

@@ -96,7 +96,7 @@ public final class TestClusterDumper extends MahoutTestCase {
   private List<VectorWritable> sampleData;
   
   private String[] termDictionary;
-  
+
   @Override
   @Before
   public void setUp() throws Exception {
@@ -176,7 +176,7 @@ public final class TestClusterDumper extends MahoutTestCase {
       int maxIterations) throws IOException {
     FileSystem fs = FileSystem.get(conf);
     for (int i = maxIterations; i >= 0; i--) {
-      Path clusters = new Path(output, "clusters-" + i);
+      Path clusters = new Path(output, "clusters-" + i + "-final");
       if (fs.exists(clusters)) {
         return clusters;
       }
@@ -195,7 +195,6 @@ public final class TestClusterDumper extends MahoutTestCase {
     ClusterDumper clusterDumper = new ClusterDumper(new Path(output,
         "clusters-0"), new Path(output, "clusteredPoints"));
     clusterDumper.printClusters(termDictionary);
-    assertTrue(true);
   }
   
   @Test
@@ -225,7 +224,7 @@ public final class TestClusterDumper extends MahoutTestCase {
         4, false, true);
     // now run the Fuzzy KMeans job
     FuzzyKMeansDriver.run(conf, getTestTempDirPath("testdata"), new Path(
-        output, "clusters-0"), output, measure, 0.001, 10, ((float) 1.1), true,
+        output, "clusters-0"), output, measure, 0.001, 10, 1.1f, true,
         true, 0, true);
     // run ClusterDumper
     ClusterDumper clusterDumper = new ClusterDumper(finalClusterPath(conf,
@@ -328,7 +327,7 @@ public final class TestClusterDumper extends MahoutTestCase {
       
       for (int row = 0; row < sData.numRows(); row++) {
         key.set(row);
-        value.set(sData.getRow(row));
+        value.set(sData.viewRow(row));
         writer.append(key, value);
       }
     } finally {

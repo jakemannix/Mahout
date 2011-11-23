@@ -38,6 +38,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
@@ -123,7 +124,7 @@ public class DisplayClustering extends Frame {
     int cx = CLUSTERS.size() - 1;
     for (List<Cluster> clusters : CLUSTERS) {
       g2.setStroke(new BasicStroke(cx == 0 ? 3 : 1));
-      g2.setColor(COLORS[Math.min(DisplayClustering.COLORS.length - 1, cx--)]);
+      g2.setColor(COLORS[Math.min(COLORS.length - 1, cx--)]);
       for (Cluster cluster : clusters) {
         plotEllipse(g2, cluster.getCenter(), cluster.getRadius().times(3));
       }
@@ -240,8 +241,9 @@ public class DisplayClustering extends Frame {
     FileSystem fs = FileSystem.get(output.toUri(), conf);
     SequenceFile.Writer writer = new SequenceFile.Writer(fs, conf, output, Text.class, VectorWritable.class);
     try {
+      int i = 0;
       for (VectorWritable vw : SAMPLE_DATA) {
-        writer.append(new Text(), vw);
+        writer.append(new Text("sample_"  + i++), vw);
       }
     } finally {
       Closeables.closeQuietly(writer);
@@ -268,6 +270,15 @@ public class DisplayClustering extends Frame {
     Configuration conf = new Configuration();
     FileSystem fs = FileSystem.get(output.toUri(), conf);
     for (FileStatus s : fs.listStatus(output, new ClustersFilter())) {
+      List<Cluster> clusters = readClusters(s.getPath());
+      CLUSTERS.add(clusters);
+    }
+  }
+
+  protected static void loadClusters(Path output, PathFilter filter) throws IOException {
+    Configuration conf = new Configuration();
+    FileSystem fs = FileSystem.get(output.toUri(), conf);
+    for (FileStatus s : fs.listStatus(output, filter)) {
       List<Cluster> clusters = readClusters(s.getPath());
       CLUSTERS.add(clusters);
     }

@@ -73,8 +73,8 @@ public abstract class LinearTrainer {
    *          thrown
    */
   public void train(Vector labelset, Matrix dataset) throws TrainingException {
-    if (labelset.size() != dataset.size()[1]) {
-      throw new CardinalityException(labelset.size(), dataset.size()[1]);
+    if (labelset.size() != dataset.columnSize()) {
+      throw new CardinalityException(labelset.size(), dataset.columnSize());
     }
     
     boolean converged = false;
@@ -85,10 +85,10 @@ public abstract class LinearTrainer {
       }
       
       converged = true;
-      int columnCount = dataset.size()[1];
+      int columnCount = dataset.columnSize();
       for (int i = 0; i < columnCount; i++) {
-        Vector dataPoint = dataset.getColumn(i);
-        log.debug("Training point: " + dataPoint);
+        Vector dataPoint = dataset.viewColumn(i);
+        log.debug("Training point: {}", dataPoint);
         
         synchronized (this.model) {
           boolean prediction = model.classify(dataPoint);

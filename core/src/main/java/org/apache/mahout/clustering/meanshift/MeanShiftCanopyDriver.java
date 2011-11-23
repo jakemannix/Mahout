@@ -41,6 +41,7 @@ import org.apache.mahout.clustering.Cluster;
 import org.apache.mahout.clustering.WeightedVectorWritable;
 import org.apache.mahout.clustering.kmeans.KMeansConfigKeys;
 import org.apache.mahout.common.AbstractJob;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
@@ -114,11 +115,8 @@ public class MeanShiftCanopyDriver extends AbstractJob {
     boolean inputIsCanopies = hasOption(INPUT_IS_CANOPIES_OPTION);
     boolean runSequential = getOption(DefaultOptionCreator.METHOD_OPTION)
         .equalsIgnoreCase(DefaultOptionCreator.SEQUENTIAL_METHOD);
-    ClassLoader ccl = Thread.currentThread().getContextClassLoader();
-    DistanceMeasure measure = ccl.loadClass(measureClass).asSubclass(
-        DistanceMeasure.class).newInstance();
-    IKernelProfile kernelProfile = ccl.loadClass(kernelProfileClass)
-        .asSubclass(IKernelProfile.class).newInstance();
+    DistanceMeasure measure = ClassUtils.instantiateAs(measureClass, DistanceMeasure.class);
+    IKernelProfile kernelProfile = ClassUtils.instantiateAs(kernelProfileClass, IKernelProfile.class);
     run(getConf(), input, output, measure, kernelProfile, t1, t2,
         convergenceDelta, maxIterations, inputIsCanopies, runClustering,
         runSequential);
@@ -318,13 +316,15 @@ public class MeanShiftCanopyDriver extends AbstractJob {
           clustersOut, "part-r-00000"), Text.class, MeanShiftCanopy.class);
       try {
         for (MeanShiftCanopy cluster : clusters) {
-          log.debug(
-              "Writing Cluster:{} center:{} numPoints:{} radius:{} to: {}",
-              new Object[] { cluster.getId(),
-                  AbstractCluster.formatVector(cluster.getCenter(), null),
-                  cluster.getNumPoints(),
-                  AbstractCluster.formatVector(cluster.getRadius(), null),
-                  clustersOut.getName() });
+          if (log.isDebugEnabled()) {
+            log.debug(
+                "Writing Cluster:{} center:{} numPoints:{} radius:{} to: {}",
+                new Object[] { cluster.getId(),
+                    AbstractCluster.formatVector(cluster.getCenter(), null),
+                    cluster.getNumPoints(),
+                    AbstractCluster.formatVector(cluster.getRadius(), null),
+                    clustersOut.getName() });
+          }
           writer.append(new Text(cluster.getIdentifier()), cluster);
         }
       } finally {
@@ -333,7 +333,9 @@ public class MeanShiftCanopyDriver extends AbstractJob {
       clustersIn = clustersOut;
       iteration++;
     }
-    return clustersIn;
+    Path finalClustersIn = new Path(output, Cluster.CLUSTERS_DIR + (iteration-1) + "-final");
+    FileSystem.get(conf).rename(new Path(output, Cluster.CLUSTERS_DIR + (iteration-1)), finalClustersIn);
+    return finalClustersIn;
   }
 
   /**
@@ -369,7 +371,9 @@ public class MeanShiftCanopyDriver extends AbstractJob {
         conf.set(MAPRED_REDUCE_TASKS, String.valueOf(numReducers));
       }
     }
-    return clustersIn;
+    Path finalClustersIn = new Path(output, Cluster.CLUSTERS_DIR + (iteration-1) + Cluster.FINAL_ITERATION_SUFFIX);
+    FileSystem.get(conf).rename(new Path(output, Cluster.CLUSTERS_DIR + (iteration-1)), finalClustersIn);
+    return finalClustersIn;
   }
 
   /**

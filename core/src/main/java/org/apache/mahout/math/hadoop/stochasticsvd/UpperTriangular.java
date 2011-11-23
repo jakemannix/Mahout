@@ -18,7 +18,10 @@
 package org.apache.mahout.math.hadoop.stochasticsvd;
 
 import org.apache.mahout.math.AbstractMatrix;
+import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.IndexException;
 import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.MatrixView;
 import org.apache.mahout.math.Vector;
 
 /**
@@ -34,7 +37,6 @@ public class UpperTriangular extends AbstractMatrix {
                                                  // non-upper assignments
 
   private double[] values;
-  private int n;
 
   /**
    * represents n x n upper triangular matrix
@@ -43,32 +45,30 @@ public class UpperTriangular extends AbstractMatrix {
    */
 
   public UpperTriangular(int n) {
+    super(n, n);
     values = new double[n * (n + 1) / 2];
-    this.n = n;
-    cardinality[0] = cardinality[1] = n;
-  }
-
-  public UpperTriangular(Vector data) {
-    n = (int) Math.round((-1 + Math.sqrt(1 + 8 * data.size())) / 2);
-    cardinality[0] = cardinality[1] = n;
-    values = new double[n * (n + 1) / 2];
-    int n = data.size();
-    // if ( data instanceof DenseVector )
-    // ((DenseVector)data).
-    // system.arraycopy would've been much faster, but this way it's a drag
-    // on B-t job.
-    for (int i = 0; i < n; i++) {
-      values[i] = data.getQuick(i);
-    }
   }
 
   public UpperTriangular(double[] data, boolean shallow) {
+    this(elementsToMatrixSize(data != null ? data.length : 0));
     if (data == null) {
       throw new IllegalArgumentException("data");
     }
     values = shallow ? data : data.clone();
-    n = (int) Math.round((-1 + Math.sqrt(1 + 8 * data.length)) / 2);
-    cardinality[0] = cardinality[1] = n;
+  }
+
+  public UpperTriangular(Vector data) {
+    this(elementsToMatrixSize(data.size()));
+
+    values = new double[rows * (rows + 1) / 2];
+    rows = data.size();
+    for (int i = 0; i < rows; i++) {
+      values[i] = data.getQuick(i);
+    }
+  }
+
+  private static int elementsToMatrixSize(int size) {
+    return (int) Math.round((-1 + Math.sqrt(1 + 8 * size)) / 2);
   }
 
   // copy-constructor
@@ -78,36 +78,37 @@ public class UpperTriangular extends AbstractMatrix {
 
   @Override
   public Matrix assignColumn(int column, Vector other) {
-
-    throw new UnsupportedOperationException();
+    if (columnSize() != other.size()) {
+      throw new IndexException(columnSize(), other.size());
+    }
+    if (other.viewPart(column + 1, other.size() - column - 1).norm(1) > 1.0e-14) {
+      throw new IllegalArgumentException("Cannot set lower portion of triangular matrix to non-zero");
+    }
+    for (Vector.Element element : other.viewPart(0, column)) {
+      setQuick(element.index(), column, element.get());
+    }
+    return this;
   }
 
   @Override
   public Matrix assignRow(int row, Vector other) {
+    if (columnSize() != other.size()) {
+      throw new IndexException(numCols(), other.size());
+    }
     for (int i = 0; i < row; i++) {
-      if (other.getQuick(i) > EPSILON) {
+      if (Math.abs(other.getQuick(i)) > EPSILON) {
         throw new IllegalArgumentException("non-triangular source");
       }
     }
-    for (int i = row; i < n; i++) {
+    for (int i = row; i < rows; i++) {
       setQuick(row, i, other.get(i));
     }
     return this;
   }
 
-  public Matrix assignRow(int row, double[] other) {
-    System.arraycopy(other, row, values, getL(row, row), n - row);
+  public Matrix assignNonZeroElementsInRow(int row, double[] other) {
+    System.arraycopy(other, row, values, getL(row, row), rows - row);
     return this;
-  }
-
-  @Override
-  public Vector getColumn(int column) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public Vector getRow(int row) {
-    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -115,21 +116,24 @@ public class UpperTriangular extends AbstractMatrix {
     if (row > column) {
       return 0;
     }
-    return values[getL(row, column)];
+    int i = getL(row, column);
+    return values[i];
   }
 
   private int getL(int row, int col) {
-    return (((n << 1) - row + 1) * row >> 1) + col - row;
+    // each row starts with some zero elements that we don't store.
+    // this accumulates an offset of (row+1)*row/2
+    return col + row * numCols() - (row + 1) * row / 2;
   }
 
   @Override
   public Matrix like() {
-    throw new UnsupportedOperationException();
+    return like(rowSize(), columnSize());
   }
 
   @Override
   public Matrix like(int rows, int columns) {
-    throw new UnsupportedOperationException();
+    return new DenseMatrix(rows, columns);
   }
 
   @Override
@@ -144,10 +148,10 @@ public class UpperTriangular extends AbstractMatrix {
 
   @Override
   public Matrix viewPart(int[] offset, int[] size) {
-    throw new UnsupportedOperationException();
+    return new MatrixView(this, offset, size);
   }
 
-  double[] getData() {
+  public double[] getData() {
     return values;
   }
 

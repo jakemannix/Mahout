@@ -178,13 +178,13 @@ public final class FileDataModelTest extends TasteTestCase {
 
   @Test
   public void testToString() {
-    assertTrue(model.toString().length() > 0);
+    assertFalse(model.toString().isEmpty());
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testEmptyFile() throws Exception {
     File file = getTestTempFile("empty");
-    writeLines(file, new String[0]); //required to create file.
+    writeLines(file); //required to create file.
     new FileDataModel(file);
   }
 }

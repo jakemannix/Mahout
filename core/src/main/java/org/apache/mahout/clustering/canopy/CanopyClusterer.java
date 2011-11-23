@@ -28,6 +28,7 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.mahout.clustering.AbstractCluster;
 import org.apache.mahout.clustering.WeightedVectorWritable;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.distance.DistanceMeasure;
 import org.apache.mahout.math.Vector;
 import org.slf4j.Logger;
@@ -89,18 +90,9 @@ public class CanopyClusterer {
    *            the Configuration
    */
   public void configure(Configuration configuration) {
-    try {
-      ClassLoader ccl = Thread.currentThread().getContextClassLoader();
-      measure = ccl.loadClass(configuration.get(CanopyConfigKeys.DISTANCE_MEASURE_KEY))
-          .asSubclass(DistanceMeasure.class).newInstance();
-      measure.configure(configuration);
-    } catch (ClassNotFoundException e) {
-      throw new IllegalStateException(e);
-    } catch (IllegalAccessException e) {
-      throw new IllegalStateException(e);
-    } catch (InstantiationException e) {
-      throw new IllegalStateException(e);
-    }
+    measure = ClassUtils.instantiateAs(configuration.get(CanopyConfigKeys.DISTANCE_MEASURE_KEY),
+                                       DistanceMeasure.class);
+    measure.configure(configuration);
     t1 = Double.parseDouble(configuration.get(CanopyConfigKeys.T1_KEY));
     t2 = Double.parseDouble(configuration.get(CanopyConfigKeys.T2_KEY));
     t3 = t1;
@@ -160,13 +152,17 @@ public class CanopyClusterer {
     for (Canopy canopy : canopies) {
       double dist = measure.distance(canopy.getCenter().getLengthSquared(), canopy.getCenter(), point);
       if (dist < t1) {
-        log.debug("Added point: {} to canopy: {}", AbstractCluster.formatVector(point, null), canopy.getIdentifier());
+        if (log.isDebugEnabled()) {
+          log.debug("Added point: {} to canopy: {}", AbstractCluster.formatVector(point, null), canopy.getIdentifier());
+        }
         canopy.observe(point);
       }
       pointStronglyBound = pointStronglyBound || dist < t2;
     }
     if (!pointStronglyBound) {
-      log.debug("Created new Canopy:{} at center:{}", nextCanopyId, AbstractCluster.formatVector(point, null));
+      if (log.isDebugEnabled()) {
+        log.debug("Created new Canopy:{} at center:{}", nextCanopyId, AbstractCluster.formatVector(point, null));
+      }
       canopies.add(new Canopy(point, nextCanopyId++, measure));
     }
   }

@@ -18,10 +18,26 @@
 package org.apache.mahout.vectorizer.document;
 
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.mahout.common.ClassUtils;
+import org.apache.mahout.common.StringTuple;
+import org.apache.mahout.vectorizer.DefaultAnalyzer;
+import org.apache.mahout.vectorizer.DocumentProcessor;
 
 /**
  * Tokenizes a text document and outputs tokens in a StringTuple
  */
 public class SequenceFileTokenizerMapper extends AbstractTokenizerMapper<Text, Text> {
 
+  @Override
+  protected void setup(Context context) throws IOException, InterruptedException {
+    super.setup(context);
+    analyzer = ClassUtils.instantiateAs(context.getConfiguration().get(DocumentProcessor.ANALYZER_CLASS,
+                                                                       DefaultAnalyzer.class.getName()),
+                                        Analyzer.class);
+  }
 }

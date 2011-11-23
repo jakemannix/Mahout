@@ -38,6 +38,7 @@ import org.apache.lucene.analysis.TokenStream;
 
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.mahout.analysis.WikipediaAnalyzer;
+import org.apache.mahout.common.ClassUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,8 +66,8 @@ public class WikipediaDatasetCreatorMapper extends Mapper<LongWritable, Text, Te
     String catMatch = findMatchingCategory(document);
     if (!"Unknown".equals(catMatch)) {
       StringBuilder contents = new StringBuilder(1000);
-      document = StringEscapeUtils.unescapeHtml(WikipediaDatasetCreatorMapper.CLOSE_TEXT_TAG_PATTERN.matcher(
-          WikipediaDatasetCreatorMapper.OPEN_TEXT_TAG_PATTERN.matcher(document).replaceFirst("")).replaceAll(""));
+      document = StringEscapeUtils.unescapeHtml(CLOSE_TEXT_TAG_PATTERN.matcher(
+          OPEN_TEXT_TAG_PATTERN.matcher(document).replaceFirst("")).replaceAll(""));
       TokenStream stream = analyzer.reusableTokenStream(catMatch, new StringReader(document));
       CharTermAttribute termAtt = stream.addAttribute(CharTermAttribute.class);
       stream.reset();
@@ -74,7 +75,7 @@ public class WikipediaDatasetCreatorMapper extends Mapper<LongWritable, Text, Te
         contents.append(termAtt.buffer(), 0, termAtt.length()).append(' ');
       }
       context.write(
-          new Text(WikipediaDatasetCreatorMapper.SPACE_NON_ALPHA_PATTERN.matcher(catMatch).replaceAll("_")),
+          new Text(SPACE_NON_ALPHA_PATTERN.matcher(catMatch).replaceAll("_")),
           new Text(contents.toString()));
     }
   }
@@ -102,17 +103,8 @@ public class WikipediaDatasetCreatorMapper extends Mapper<LongWritable, Text, Te
     exactMatchOnly = conf.getBoolean("exact.match.only", false);
 
     if (analyzer == null) {
-      try {
-        String analyzerStr = conf.get("analyzer.class", WikipediaAnalyzer.class.getName());
-        Class<? extends Analyzer> analyzerClass = Class.forName(analyzerStr).asSubclass(Analyzer.class);
-        analyzer = analyzerClass.newInstance();
-      } catch (ClassNotFoundException e) {
-        throw new IllegalStateException(e);
-      } catch (IllegalAccessException e) {
-        throw new IllegalStateException(e);
-      } catch (InstantiationException e) {
-        throw new IllegalStateException(e);
-      }
+      String analyzerStr = conf.get("analyzer.class", WikipediaAnalyzer.class.getName());
+      analyzer = ClassUtils.instantiateAs(analyzerStr, Analyzer.class);
     }
 
     log.info("Configure: Input Categories size: {} Exact Match: {} Analyzer: {}",
@@ -132,11 +124,12 @@ public class WikipediaDatasetCreatorMapper extends Mapper<LongWritable, Text, Te
       // categories.add(category.toLowerCase());
       if (exactMatchOnly && inputCategories.contains(category)) {
         return category;
-      } else if (!exactMatchOnly) {
+      }
+      if (!exactMatchOnly) {
         for (int i = 0; i < inputCategories.size(); i++) {
           String inputCategory = inputCategories.get(i);
           Pattern inputCategoryPattern = inputCategoryPatterns.get(i);
-          if (inputCategoryPattern.matcher(category).matches()) { // inexact match with word boundary. 
+          if (inputCategoryPattern.matcher(category).matches()) { // inexact match with word boundary.
             return inputCategory;
           }
         }

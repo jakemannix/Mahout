@@ -82,7 +82,7 @@ public final class TestVectorView extends MahoutTestCase {
     int i = 0;
     while (iter.hasNext()) {
       Vector.Element elt = iter.next();
-      assertEquals((elt.index()) + " Value: " + gold[i]
+      assertEquals(elt.index() + " Value: " + gold[i]
           + " does not equal: " + elt.get(), gold[i], elt.get(), 0.0);
       i++;
     }
@@ -97,11 +97,7 @@ public final class TestVectorView extends MahoutTestCase {
   public void testSet() throws Exception {
     test.set(2, 4.5);
     for (int i = 0; i < test.size(); i++) {
-      if (i == 2) {
-        assertEquals("set [" + i + ']', 4.5, test.get(i), EPSILON);
-      } else {
-        assertEquals("set [" + i + ']', values[OFFSET + i], test.get(i), EPSILON);
-      }
+      assertEquals("set [" + i + ']', i == 2 ? 4.5 : values[OFFSET + i], test.get(i), EPSILON);
     }
   }
 
@@ -306,10 +302,10 @@ public final class TestVectorView extends MahoutTestCase {
   @Test
   public void testCrossProduct() {
     Matrix result = test.cross(test);
-    assertEquals("row size", test.size(), result.size()[0]);
-    assertEquals("col size", test.size(), result.size()[1]);
-    for (int row = 0; row < result.size()[0]; row++) {
-      for (int col = 0; col < result.size()[1]; col++) {
+    assertEquals("row size", test.size(), result.rowSize());
+    assertEquals("col size", test.size(), result.columnSize());
+    for (int row = 0; row < result.rowSize(); row++) {
+      for (int col = 0; col < result.columnSize(); col++) {
         assertEquals("cross[" + row + "][" + col + ']', test.getQuick(row)
             * test.getQuick(col), result.getQuick(row, col), EPSILON);
       }

@@ -40,7 +40,10 @@ import org.apache.mahout.math.VectorWritable;
  * Compute B*Bt using simple fact that B*Bt = sum(outer prod ( B_(*i), (B_(*i))
  * ).
  * 
+ * @deprecated now should not be necessary if we sum up BBt products in output
+ *             of Bt job.
  */
+@Deprecated
 public final class BBtJob {
 
   public static final String OUTPUT_BBT = "part";
@@ -48,8 +51,9 @@ public final class BBtJob {
   private BBtJob() {
   }
 
-  public static void run(Configuration conf, Path btPath, Path outputPath, int numReduceTasks)
-    throws IOException, ClassNotFoundException, InterruptedException {
+  public static void run(Configuration conf, Path btPath, Path outputPath,
+      int numReduceTasks) throws IOException, ClassNotFoundException,
+      InterruptedException {
 
     Job job = new Job(conf);
     job.setJobName("BBt-job");
@@ -63,16 +67,18 @@ public final class BBtJob {
     job.setMapOutputKeyClass(IntWritable.class);
     job.setMapOutputValueClass(VectorWritable.class);
     job.setMapperClass(BBtMapper.class);
-    job.setReducerClass(BBtReducer.class);
 
     // combiner and reducer
+    job.setReducerClass(BBtReducer.class);
+    job.setNumReduceTasks(numReduceTasks);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VectorWritable.class);
 
     // output
     job.setOutputFormatClass(SequenceFileOutputFormat.class);
     FileOutputFormat.setOutputPath(job, outputPath);
-    SequenceFileOutputFormat.setOutputCompressionType(job, CompressionType.BLOCK);
+    SequenceFileOutputFormat.setOutputCompressionType(job,
+                                                      CompressionType.BLOCK);
     FileOutputFormat.setOutputCompressorClass(job, DefaultCodec.class);
     job.getConfiguration().set("mapreduce.output.basename", OUTPUT_BBT);
 
@@ -92,11 +98,11 @@ public final class BBtJob {
     private final VectorWritable vw = new VectorWritable();
     private final IntWritable iw = new IntWritable();
     private UpperTriangular bbtPartial; // are all partial BBt products
-                                          // symmetrical as well? yes.
+                                        // symmetrical as well? yes.
 
     @Override
     protected void map(IntWritable key, VectorWritable value, Context context)
-      throws IOException, InterruptedException {
+        throws IOException, InterruptedException {
       Vector btVec = value.get();
       int kp = btVec.size();
       if (bbtPartial == null) {
@@ -106,13 +112,17 @@ public final class BBtJob {
         // this approach should reduce GC churn rate
         double mul = btVec.getQuick(i);
         for (int j = i; j < kp; j++) {
-          bbtPartial.setQuick(i, j, bbtPartial.getQuick(i, j) + mul * btVec.getQuick(j));
+          bbtPartial.setQuick(i,
+                              j,
+                              bbtPartial.getQuick(i, j) + mul
+                                  * btVec.getQuick(j));
         }
       }
     }
 
     @Override
-    protected void cleanup(Context context) throws IOException, InterruptedException {
+    protected void cleanup(Context context) throws IOException,
+        InterruptedException {
       if (bbtPartial != null) {
         iw.set(context.getTaskAttemptID().getTaskID().getId());
         vw.set(new DenseVector(bbtPartial.getData(), true));
@@ -122,16 +132,18 @@ public final class BBtJob {
     }
   }
 
-  public static class BBtReducer extends Reducer<IntWritable, VectorWritable, IntWritable, VectorWritable> {
+  public static class BBtReducer extends
+      Reducer<IntWritable, VectorWritable, IntWritable, VectorWritable> {
 
     private double[] accum;
 
     @Override
-    protected void cleanup(Context context) throws IOException, InterruptedException {
+    protected void cleanup(Context context) throws IOException,
+        InterruptedException {
       try {
         if (accum != null) {
-          context.write(new IntWritable(), new VectorWritable(new DenseVector(
-              accum, true)));
+          context.write(new IntWritable(),
+                        new VectorWritable(new DenseVector(accum, true)));
         }
       } finally {
         super.cleanup(context);
@@ -139,9 +151,8 @@ public final class BBtJob {
     }
 
     @Override
-    protected void reduce(IntWritable iw,
-                          Iterable<VectorWritable> ivw,
-                          Context ctx) throws IOException, InterruptedException {
+    protected void reduce(IntWritable iw, Iterable<VectorWritable> ivw,
+        Context ctx) throws IOException, InterruptedException {
       Iterator<VectorWritable> vwIter = ivw.iterator();
       Vector bbtPartial = vwIter.next().get();
       if (accum == null) {

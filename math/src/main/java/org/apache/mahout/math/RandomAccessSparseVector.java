@@ -20,7 +20,6 @@ package org.apache.mahout.math;
 import java.util.Iterator;
 
 import com.google.common.collect.AbstractIterator;
-import org.apache.mahout.math.function.IntDoubleProcedure;
 import org.apache.mahout.math.list.IntArrayList;
 import org.apache.mahout.math.map.OpenIntDoubleHashMap;
 
@@ -67,8 +66,7 @@ public class RandomAccessSparseVector extends AbstractVector {
 
   @Override
   protected Matrix matrixLike(int rows, int columns) {
-    int[] cardinality = {rows, columns};
-    return new SparseRowMatrix(cardinality);
+    return new SparseRowMatrix(rows, columns);
   }
 
   @Override
@@ -167,54 +165,6 @@ public class RandomAccessSparseVector extends AbstractVector {
   @Override
   public Iterator<Element> iterator() {
     return new AllIterator();
-  }
-
-  @Override
-  public void addTo(Vector v) {
-    if (v.size() != size()) {
-      throw new CardinalityException(size(), v.size());
-    }
-    values.forEachPair(new AddToVector(v));
-  }
-
-  @Override
-  public double dot(Vector x) {
-    if (size() != x.size()) {
-      throw new CardinalityException(size(), x.size());
-    }
-    if (this == x) {
-      return dotSelf();
-    }
-    
-    double result = 0;
-    if (x instanceof SequentialAccessSparseVector) {
-      Iterator<Element> iter = x.iterateNonZero();
-      while (iter.hasNext()) {
-        Element element = iter.next();
-        result += element.get() * getQuick(element.index());
-      }
-      return result;
-    } else { 
-      Iterator<Element> iter = iterateNonZero();
-      while (iter.hasNext()) {
-        Element element = iter.next();
-        result += element.get() * x.getQuick(element.index());
-      }
-      return result;
-    }
-  }
-
-
-  private static final class AddToVector implements IntDoubleProcedure {
-    private final Vector v;
-    private AddToVector(Vector v) {
-      this.v = v;
-    }
-    @Override
-    public boolean apply(int key, double value) {
-      v.set(key, value + v.get(key));
-      return true;
-    }
   }
 
   private final class NonDefaultIterator extends AbstractIterator<Element> {

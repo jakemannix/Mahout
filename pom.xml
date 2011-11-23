@@ -157,22 +157,22 @@
       <dependency>
         <groupId>org.apache.lucene</groupId>
         <artifactId>lucene-analyzers</artifactId>
-        <version>3.1.0</version>
+        <version>3.4.0</version>
       </dependency>
       <dependency>
         <groupId>org.apache.lucene</groupId>
         <artifactId>lucene-core</artifactId>
-        <version>3.1.0</version>
+        <version>3.4.0</version>
       </dependency>
       <dependency>
         <groupId>org.apache.lucene</groupId>
         <artifactId>lucene-benchmark</artifactId>
-        <version>3.1.0</version>
+        <version>3.4.0</version>
       </dependency>
       <dependency>
         <groupId>org.apache.solr</groupId>
         <artifactId>solr-commons-csv</artifactId>
-        <version>3.1.0</version>
+        <version>3.4.0</version>
       </dependency>
       
       <dependency>
@@ -191,7 +191,7 @@
       <dependency>
         <groupId>org.apache.hadoop</groupId>
         <artifactId>hadoop-core</artifactId>
-        <version>0.20.203.0</version>
+        <version>0.20.204.0</version>
         <exclusions>
           <exclusion>
             <groupId>net.sf.kosmosfs</groupId>
@@ -291,6 +291,7 @@
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-jcl</artifactId>
         <version>1.6.1</version>
+        <scope>test</scope>
       </dependency>
       
       <dependency>
@@ -586,7 +587,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <forkMode>once</forkMode>
-          <argLine>-Xms256m -Xmx512m</argLine>
+          <argLine>-Xms256m -Xmx768m</argLine>
           <testFailureIgnore>false</testFailureIgnore>
           <redirectTestOutputToFile>true</redirectTestOutputToFile>
         </configuration>

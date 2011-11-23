@@ -46,7 +46,7 @@ public class Exponential extends AbstractContinousDistribution {
    */
   @Override
   public double nextDouble() {
-    return -Math.log(1 - randomGenerator.nextDouble()) / lambda;
+    return -Math.log1p(-randomDouble()) / lambda;
   }
 
   /**
@@ -73,6 +73,7 @@ public class Exponential extends AbstractContinousDistribution {
   /**
    * Returns a String representation of the receiver.
    */
+  @Override
   public String toString() {
     return String.format(Locale.ENGLISH, "%s(%.4f)", this.getClass().getName(), lambda);
   }

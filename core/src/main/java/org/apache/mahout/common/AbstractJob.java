@@ -44,8 +44,12 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.Tool;
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
+import org.apache.mahout.vectorizer.DefaultAnalyzer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -122,6 +126,11 @@ public abstract class AbstractJob extends Configured implements Tool {
   protected Path getOutputPath() {
     return outputPath;
   }
+
+  protected Path getOutputPath(String path) {
+    return new Path(outputPath, path);
+  }
+
 
   protected Path getTempPath() {
     return tempPath;
@@ -399,57 +408,36 @@ public abstract class AbstractJob extends Configured implements Tool {
                            Class<? extends Mapper> mapper,
                            Class<? extends Writable> mapperKey,
                            Class<? extends Writable> mapperValue,
+                           Class<? extends OutputFormat> outputFormat) throws IOException {
+
+    Job job = HadoopUtil.prepareJob(inputPath, outputPath,
+            inputFormat, mapper, mapperKey, mapperValue, outputFormat, getConf());
+    job.setJobName(HadoopUtil.getCustomJobName(getClass().getSimpleName(), job, mapper, Reducer.class));
+    return job;
+
+  }
+
+  protected Job prepareJob(Path inputPath, Path outputPath, Class<? extends Mapper> mapper,
+      Class<? extends Writable> mapperKey, Class<? extends Writable> mapperValue, Class<? extends Reducer> reducer,
+      Class<? extends Writable> reducerKey, Class<? extends Writable> reducerValue) throws IOException {
+    return prepareJob(inputPath, outputPath, SequenceFileInputFormat.class, mapper, mapperKey, mapperValue, reducer,
+        reducerKey, reducerValue, SequenceFileOutputFormat.class);
+  }
+
+  protected Job prepareJob(Path inputPath,
+                           Path outputPath,
+                           Class<? extends InputFormat> inputFormat,
+                           Class<? extends Mapper> mapper,
+                           Class<? extends Writable> mapperKey,
+                           Class<? extends Writable> mapperValue,
                            Class<? extends Reducer> reducer,
                            Class<? extends Writable> reducerKey,
                            Class<? extends Writable> reducerValue,
                            Class<? extends OutputFormat> outputFormat) throws IOException {
-
-    Job job = new Job(new Configuration(getConf()));
-    Configuration jobConf = job.getConfiguration();
-
-    if (reducer.equals(Reducer.class)) {
-      if (mapper.equals(Mapper.class)) {
-        throw new IllegalStateException("Can't figure out the user class jar file from mapper/reducer");
-      }
-      job.setJarByClass(mapper);
-    } else {
-      job.setJarByClass(reducer);
-    }
-
-    job.setInputFormatClass(inputFormat);
-    jobConf.set("mapred.input.dir", inputPath.toString());
-
-    job.setMapperClass(mapper);
-    job.setMapOutputKeyClass(mapperKey);
-    job.setMapOutputValueClass(mapperValue);
-
-    jobConf.setBoolean("mapred.compress.map.output", true);
-
-    job.setReducerClass(reducer);
-    job.setOutputKeyClass(reducerKey);
-    job.setOutputValueClass(reducerValue);
-
-    job.setJobName(getCustomJobName(job, mapper, reducer));
-
-    job.setOutputFormatClass(outputFormat);
-    jobConf.set("mapred.output.dir", outputPath.toString());
-
+    Job job = HadoopUtil.prepareJob(inputPath, outputPath,
+            inputFormat, mapper, mapperKey, mapperValue, reducer, reducerKey, reducerValue, outputFormat, getConf());
+    job.setJobName(HadoopUtil.getCustomJobName(getClass().getSimpleName(), job, mapper, Reducer.class));
     return job;
-  }
-
-  private String getCustomJobName(JobContext job,
-                                  Class<? extends Mapper> mapper,
-                                  Class<? extends Reducer> reducer) {
-    StringBuilder name = new StringBuilder(100);
-    String customJobName = job.getJobName();
-    if (customJobName == null || customJobName.trim().length() == 0) {
-      name.append(getClass().getSimpleName());
-    } else {
-      name.append(customJobName);
-    }
-    name.append('-').append(mapper.getSimpleName());
-    name.append('-').append(reducer.getSimpleName());
-    return name.toString();
   }
 
   /**
@@ -462,4 +450,15 @@ public abstract class AbstractJob extends Configured implements Tool {
     FileInputFormat.setInputPaths(job, inputPathOne.makeQualified(fs), inputPathTwo.makeQualified(fs));
   }
 
+  protected Class<? extends Analyzer> getAnalyzerClassFromOption() throws ClassNotFoundException {
+    Class<? extends Analyzer> analyzerClass = DefaultAnalyzer.class;
+    if (hasOption(DefaultOptionCreator.ANALYZER_NAME_OPTION)) {
+      String className = getOption(DefaultOptionCreator.ANALYZER_NAME_OPTION).toString();
+      analyzerClass = Class.forName(className).asSubclass(Analyzer.class);
+      // try instantiating it, b/c there isn't any point in setting it if
+      // you can't instantiate it
+      ClassUtils.instantiateAs(analyzerClass, Analyzer.class);
+    }
+    return analyzerClass;
+  }
 }

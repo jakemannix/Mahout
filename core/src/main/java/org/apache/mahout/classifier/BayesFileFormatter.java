@@ -42,6 +42,8 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.util.Version;
+import org.apache.mahout.common.ClassUtils;
+import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -263,13 +265,9 @@ public final class BayesFileFormatter {
     ArgumentBuilder abuilder = new ArgumentBuilder();
     GroupBuilder gbuilder = new GroupBuilder();
     
-    Option inputOpt = obuilder.withLongName("input").withRequired(true).withArgument(
-      abuilder.withName("input").withMinimum(1).withMaximum(1).create()).withDescription("The Input file")
-        .withShortName("i").create();
+    Option inputOpt = DefaultOptionCreator.inputOption().create();
     
-    Option outputOpt = obuilder.withLongName("output").withRequired(true).withArgument(
-      abuilder.withName("output").withMinimum(1).withMaximum(1).create()).withDescription("The output file")
-        .withShortName("o").create();
+    Option outputOpt = DefaultOptionCreator.outputOption().create();
     
     Option labelOpt = obuilder.withLongName("label").withRequired(true).withArgument(
       abuilder.withName("label").withMinimum(1).withMaximum(1).create()).withDescription("The label of the file")
@@ -288,7 +286,7 @@ public final class BayesFileFormatter {
       abuilder.withName("collapse").withMinimum(1).withMaximum(1).create()).withDescription(
       "Collapse a whole directory to a single file, one doc per line").withShortName("p").create();
     
-    Option helpOpt = obuilder.withLongName("help").withDescription("Print out help").withShortName("h").create();
+    Option helpOpt = DefaultOptionCreator.helpOption();
     Group group = gbuilder.withName("Options").withOption(inputOpt).withOption(outputOpt).withOption(labelOpt)
         .withOption(analyzerOpt).withOption(charsetOpt).withOption(collapseOpt).withOption(helpOpt).create();
     try {
@@ -305,7 +303,7 @@ public final class BayesFileFormatter {
       String label = (String) cmdLine.getValue(labelOpt);
       Analyzer analyzer;
       if (cmdLine.hasOption(analyzerOpt)) {
-        analyzer = Class.forName((String) cmdLine.getValue(analyzerOpt)).asSubclass(Analyzer.class).newInstance();
+        analyzer = ClassUtils.instantiateAs((String) cmdLine.getValue(analyzerOpt), Analyzer.class);
       } else {
         analyzer = new StandardAnalyzer(Version.LUCENE_31);
       }

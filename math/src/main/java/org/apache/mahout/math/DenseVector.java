@@ -212,16 +212,6 @@ public class DenseVector extends AbstractVector {
     return result;
   }
 
-  @Override
-  public void addTo(Vector v) {
-    if (size() != v.size()) {
-      throw new CardinalityException(size(), v.size());
-    }
-    for (int i = 0; i < values.length; i++) {
-      v.setQuick(i, values[i] + v.getQuick(i));
-    }
-  }
-  
   public void addAll(Vector v) {
     if (size() != v.size()) {
       throw new CardinalityException(size(), v.size());
@@ -233,34 +223,6 @@ public class DenseVector extends AbstractVector {
       values[element.index()] += element.get();
     }
   }
-
-  
-  @Override
-  public double dot(Vector x) {
-    if (size() != x.size()) {
-      throw new CardinalityException(size(), x.size());
-    }
-    if (this == x) {
-      return dotSelf();
-    }
-    
-    double result = 0;
-    if (x instanceof DenseVector) {
-      for (int i = 0; i < x.size(); i++) {
-        result += this.values[i] * x.getQuick(i);
-      }
-      return result;
-    } else {
-      // Try to get the speed boost associated fast/normal seq access on x and quick lookup on this
-      Iterator<Element> iter = x.iterateNonZero();
-      while (iter.hasNext()) {
-        Element element = iter.next();
-        result += element.get() * this.values[element.index()];
-      }
-      return result;
-    }
-  }
-
 
   private final class NonDefaultIterator extends AbstractIterator<Element> {
 

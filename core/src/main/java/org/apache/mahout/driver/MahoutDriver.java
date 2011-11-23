@@ -124,7 +124,7 @@ public final class MahoutDriver {
 
     Properties mainProps = loadProperties(progName + ".props");
     if (mainProps == null) {
-      log.warn("No " + progName + ".props found on classpath, will use command-line arguments only");
+      log.warn("No {}.props found on classpath, will use command-line arguments only", progName);
       mainProps = new Properties();
     }
 
@@ -176,7 +176,7 @@ public final class MahoutDriver {
       } else {
         argsList.add(arg);
         for (String argValue : Arrays.asList(argMap.get(arg))) {
-          if (argValue.length() > 0) {
+          if (!argValue.isEmpty()) {
             argsList.add(argValue);
           }
         }
@@ -188,7 +188,7 @@ public final class MahoutDriver {
     programDriver.driver(argsList.toArray(new String[argsList.size()]));
 
     if (log.isInfoEnabled()) {
-      log.info("Program took {} ms", System.currentTimeMillis() - start);
+      log.info("Program took {} ms (Minutes: {})", System.currentTimeMillis() - start, (System.currentTimeMillis() - start)/60000.0);
     }
   }
 

@@ -25,7 +25,9 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.mahout.vectorizer.DictionaryVectorizer;
 
 /**
- * Can also be used as a local Combiner. This accumulates all the words and the weights and sums them up.
+ * This accumulates all the words and the weights and sums them up.
+ *
+ * @see TermCountCombiner
  */
 public class TermCountReducer extends Reducer<Text, LongWritable, Text, LongWritable> {
 

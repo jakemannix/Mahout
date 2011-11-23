@@ -40,6 +40,7 @@ import org.apache.mahout.clustering.AbstractCluster;
 import org.apache.mahout.clustering.Cluster;
 import org.apache.mahout.clustering.WeightedVectorWritable;
 import org.apache.mahout.common.AbstractJob;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.distance.DistanceMeasure;
@@ -67,10 +68,10 @@ public final class RepresentativePointsDriver extends AbstractJob {
   }
 
   @Override
-  public int run(String[] args)
-    throws ClassNotFoundException, InstantiationException, IllegalAccessException, IOException, InterruptedException {
+  public int run(String[] args) throws ClassNotFoundException, IOException, InterruptedException {
     addInputOption();
     addOutputOption();
+    addOption("clusteredPoints", "cp", "The path to the clustered points", true);
     addOption(DefaultOptionCreator.distanceMeasureOption().create());
     addOption(DefaultOptionCreator.maxIterationsOption().create());
     addOption(DefaultOptionCreator.methodOption().create());
@@ -84,10 +85,9 @@ public final class RepresentativePointsDriver extends AbstractJob {
     int maxIterations = Integer.parseInt(getOption(DefaultOptionCreator.MAX_ITERATIONS_OPTION));
     boolean runSequential = getOption(DefaultOptionCreator.METHOD_OPTION).equalsIgnoreCase(
         DefaultOptionCreator.SEQUENTIAL_METHOD);
-    ClassLoader ccl = Thread.currentThread().getContextClassLoader();
-    DistanceMeasure measure = ccl.loadClass(distanceMeasureClass).asSubclass(DistanceMeasure.class).newInstance();
-
-    run(getConf(), input, null, output, measure, maxIterations, runSequential);
+    DistanceMeasure measure = ClassUtils.instantiateAs(distanceMeasureClass, DistanceMeasure.class);
+    Path clusteredPoints = new Path(getOption("clusteredPoints"));
+    run(getConf(), input, clusteredPoints, output, measure, maxIterations, runSequential);
     return 0;
   }
 
@@ -124,7 +124,9 @@ public final class RepresentativePointsDriver extends AbstractJob {
       SequenceFile.Writer writer = new SequenceFile.Writer(fs, conf, path, IntWritable.class, VectorWritable.class);
       try {
         for (Cluster value : new SequenceFileValueIterable<Cluster>(inPart, true, conf)) {
-          log.debug("C-{}: {}", value.getId(), AbstractCluster.formatVector(value.getCenter(), null));
+          if (log.isDebugEnabled()) {
+            log.debug("C-{}: {}", value.getId(), AbstractCluster.formatVector(value.getCenter(), null));
+          }
           writer.append(new IntWritable(value.getId()), new VectorWritable(value.getCenter()));
         }
       } finally {

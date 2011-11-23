@@ -17,9 +17,8 @@
 
 package org.apache.mahout.text;
 
-import java.io.IOException;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
+import java.nio.charset.Charset;
 import java.util.Map;
 
 import com.google.common.collect.Maps;
@@ -32,6 +31,7 @@ import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
+import org.apache.mahout.utils.io.ChunkedWriter;
 
 /**
  * Converts a directory of text documents into SequenceFiles of Specified chunkSize. This class takes in a
@@ -44,43 +44,11 @@ public class SequenceFilesFromDirectory extends AbstractJob {
 
   private static final String PREFIX_ADDITION_FILTER = PrefixAdditionFilter.class.getName();
   
-  public static final String[] CHUNK_SIZE_OPTION = {"chunkSize", "chunk"};
-  public static final String[] FILE_FILTER_CLASS_OPTION = {"fileFilterClass","filter"};
-  public static final String[] KEY_PREFIX_OPTION = {"keyPrefix", "prefix"};
-  public static final String[] CHARSET_OPTION = {"charset", "c"};
+  private static final String[] CHUNK_SIZE_OPTION = {"chunkSize", "chunk"};
+  private static final String[] FILE_FILTER_CLASS_OPTION = {"fileFilterClass","filter"};
+  private static final String[] KEY_PREFIX_OPTION = {"keyPrefix", "prefix"};
+  private static final String[] CHARSET_OPTION = {"charset", "c"};
 
-  public static void run(Configuration conf,
-                         String keyPrefix,
-                         Map<String, String> options,
-                         Path input,
-                         Path output)
-    throws InstantiationException, IllegalAccessException, InvocationTargetException, IOException,
-           NoSuchMethodException, ClassNotFoundException {
-    FileSystem fs = FileSystem.get(input.toUri(), conf);
-    ChunkedWriter writer = new ChunkedWriter(conf, Integer.parseInt(options.get(CHUNK_SIZE_OPTION[0])), output);
-
-    try {
-      SequenceFilesFromDirectoryFilter pathFilter;
-      String fileFilterClassName = options.get(FILE_FILTER_CLASS_OPTION[0]);
-      if (PrefixAdditionFilter.class.getName().equals(fileFilterClassName)) {
-        pathFilter = new PrefixAdditionFilter(conf, keyPrefix, options, writer, fs);
-      } else {
-        Class<? extends SequenceFilesFromDirectoryFilter> pathFilterClass =
-            Class.forName(fileFilterClassName).asSubclass(SequenceFilesFromDirectoryFilter.class);
-        Constructor<? extends SequenceFilesFromDirectoryFilter> constructor =
-            pathFilterClass.getConstructor(Configuration.class,
-                                           String.class,
-                                           Map.class,
-                                           ChunkedWriter.class,
-                                           FileSystem.class);
-        pathFilter = constructor.newInstance(conf, keyPrefix, options, writer, fs);
-      }
-      fs.listStatus(input, pathFilter);
-    } finally {
-      Closeables.closeQuietly(writer);
-    }
-  }
-  
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new SequenceFilesFromDirectory(), args);
   }
@@ -89,9 +57,7 @@ public class SequenceFilesFromDirectory extends AbstractJob {
    * callback main after processing hadoop parameters
    */
   @Override
-  public int run(String[] args)
-    throws IOException, ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchMethodException,
-           InvocationTargetException {
+  public int run(String[] args) throws Exception {
     addOptions();    
     
     if (parseArguments(args) == null) {
@@ -107,7 +73,32 @@ public class SequenceFilesFromDirectory extends AbstractJob {
     }
     String keyPrefix = getOption(KEY_PREFIX_OPTION[0]);
 
-    run(getConf(), keyPrefix, options, input, output);
+    Charset charset = Charset.forName(getOption(CHARSET_OPTION[0]));
+    Configuration conf = getConf();
+    FileSystem fs = FileSystem.get(input.toUri(), conf);
+    ChunkedWriter writer = new ChunkedWriter(conf, Integer.parseInt(options.get(CHUNK_SIZE_OPTION[0])), output);
+
+    try {
+      SequenceFilesFromDirectoryFilter pathFilter;
+      String fileFilterClassName = options.get(FILE_FILTER_CLASS_OPTION[0]);
+      if (PrefixAdditionFilter.class.getName().equals(fileFilterClassName)) {
+        pathFilter = new PrefixAdditionFilter(conf, keyPrefix, options, writer, charset, fs);
+      } else {
+        Class<? extends SequenceFilesFromDirectoryFilter> pathFilterClass =
+            Class.forName(fileFilterClassName).asSubclass(SequenceFilesFromDirectoryFilter.class);
+        Constructor<? extends SequenceFilesFromDirectoryFilter> constructor =
+            pathFilterClass.getConstructor(Configuration.class,
+                                           String.class,
+                                           Map.class,
+                                           ChunkedWriter.class,
+                                           Charset.class,
+                                           FileSystem.class);
+        pathFilter = constructor.newInstance(conf, keyPrefix, options, writer, fs);
+      }
+      fs.listStatus(input, pathFilter);
+    } finally {
+      Closeables.closeQuietly(writer);
+    }
     return 0;
   }
 
@@ -131,7 +122,7 @@ public class SequenceFilesFromDirectory extends AbstractJob {
    * Override this method in order to parse your additional options from the command line. Do not forget to call
    * super() otherwise standard options (input/output dirs etc) will not be available.
    */
-  protected Map<String, String> parseOptions() throws IOException {
+  protected Map<String, String> parseOptions() {
     Map<String, String> options = Maps.newHashMap();
     options.put(CHUNK_SIZE_OPTION[0], getOption(CHUNK_SIZE_OPTION[0]));
     options.put(FILE_FILTER_CLASS_OPTION[0], getOption(FILE_FILTER_CLASS_OPTION[0]));

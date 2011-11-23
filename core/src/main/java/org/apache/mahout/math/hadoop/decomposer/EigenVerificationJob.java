@@ -102,7 +102,8 @@ public class EigenVerificationJob extends AbstractJob {
     Map<String, String> argMap = handleArgs(args);
     if (argMap == null) {
       return -1;
-    } else if (argMap.isEmpty()) {
+    }
+    if (argMap.isEmpty()) {
       return 0;
     }
     // parse out the arguments
@@ -236,7 +237,8 @@ public class EigenVerificationJob extends AbstractJob {
         int index2 = e2.getKey().index();
         if (index1 < index2) {
           return -1;
-        } else if (index1 > index2) {
+        }
+        if (index1 > index2) {
           return 1;
         }
         return 0;
@@ -263,7 +265,7 @@ public class EigenVerificationJob extends AbstractJob {
       for (MatrixSlice slice : eigens) {
         eigenVectors.add(slice.vector());
       }
-      eigensToVerify = new SparseRowMatrix(new int[] {eigenVectors.size(), eigenVectors.get(0).size()},
+      eigensToVerify = new SparseRowMatrix(eigenVectors.size(), eigenVectors.get(0).size(),
                                            eigenVectors.toArray(new Vector[eigenVectors.size()]),
                                            true,
                                            true);

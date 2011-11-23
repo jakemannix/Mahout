@@ -30,6 +30,7 @@ import org.apache.mahout.clustering.conversion.InputDriver;
 import org.apache.mahout.clustering.kmeans.KMeansDriver;
 import org.apache.mahout.clustering.kmeans.RandomSeedGenerator;
 import org.apache.mahout.common.AbstractJob;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.distance.DistanceMeasure;
@@ -57,14 +58,12 @@ public final class Job extends AbstractJob {
       Path output = new Path("output");
       Configuration conf = new Configuration();
       HadoopUtil.delete(conf, output);
-      new Job().run(conf, new Path("testdata"), output,
-          new EuclideanDistanceMeasure(), 6, 0.5, 10);
+      run(conf, new Path("testdata"), output, new EuclideanDistanceMeasure(), 6, 0.5, 10);
     }
   }
 
   @Override
-  public int run(String[] args) throws IOException, ClassNotFoundException,
-      InstantiationException, IllegalAccessException, InterruptedException {
+  public int run(String[] args) throws Exception{
     addInputOption();
     addOutputOption();
     addOption(DefaultOptionCreator.distanceMeasureOption().create());
@@ -93,9 +92,7 @@ public final class Job extends AbstractJob {
     if (hasOption(DefaultOptionCreator.OVERWRITE_OPTION)) {
       HadoopUtil.delete(getConf(), output);
     }
-    ClassLoader ccl = Thread.currentThread().getContextClassLoader();
-    Class<?> cl = ccl.loadClass(measureClass);
-    DistanceMeasure measure = (DistanceMeasure) cl.newInstance();
+    DistanceMeasure measure = ClassUtils.instantiateAs(measureClass, DistanceMeasure.class);
     if (hasOption(DefaultOptionCreator.NUM_CLUSTERS_OPTION)) {
       int k = Integer
           .parseInt(getOption(DefaultOptionCreator.NUM_CLUSTERS_OPTION));
@@ -133,9 +130,9 @@ public final class Job extends AbstractJob {
    * @param maxIterations
    *          the int maximum number of iterations
    */
-  public void run(Configuration conf, Path input, Path output,
-      DistanceMeasure measure, int k, double convergenceDelta, int maxIterations)
-      throws IOException, InterruptedException, ClassNotFoundException {
+  public static void run(Configuration conf, Path input, Path output,
+                         DistanceMeasure measure, int k, double convergenceDelta, int maxIterations)
+          throws Exception{
     Path directoryContainingConvertedInput = new Path(output,
         DIRECTORY_CONTAINING_CONVERTED_INPUT);
     log.info("Preparing Input");
@@ -181,16 +178,11 @@ public final class Job extends AbstractJob {
    *          the double convergence criteria for iterations
    * @param maxIterations
    *          the int maximum number of iterations
-   * @throws IOException 
-   * @throws InterruptedException 
-   * @throws ClassNotFoundException 
-   * @throws IllegalAccessException
-   * @throws InstantiationException
    */
-  public void run(Configuration conf, Path input, Path output,
-      DistanceMeasure measure, double t1, double t2, double convergenceDelta,
-      int maxIterations) throws IOException, InterruptedException,
-      ClassNotFoundException, InstantiationException, IllegalAccessException {
+  public static void run(Configuration conf, Path input, Path output,
+                         DistanceMeasure measure, double t1, double t2, double convergenceDelta,
+                         int maxIterations)
+          throws Exception{
     Path directoryContainingConvertedInput = new Path(output,
         DIRECTORY_CONTAINING_CONVERTED_INPUT);
     log.info("Preparing Input");

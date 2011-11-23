@@ -66,7 +66,7 @@ public class DisplayFuzzyKMeans extends DisplayClustering {
     RandomUtils.useTestSeed();
     DisplayClustering.generateSamples();
     writeSampleData(samples);
-    boolean runClusterer = false;
+    boolean runClusterer = true;
     int maxIterations = 10;
     if (runClusterer) {
       runSequentialFuzzyKClusterer(conf, samples, output, measure, maxIterations);
@@ -113,7 +113,7 @@ public class DisplayFuzzyKMeans extends DisplayClustering {
     Path clusters = RandomSeedGenerator.buildRandom(conf, samples, new Path(
         output, "clusters-0"), 3, measure);
     double threshold = 0.001;
-    int m = 3;
+    float m = 1.1F;
     FuzzyKMeansDriver.run(samples, clusters, output, measure, threshold,
         maxIterations, m, true, true, threshold, true);
     

@@ -92,9 +92,12 @@ public final class SequenceFileDumper {
         FileStatus[] inputPaths = fs.globStatus(pathPattern);
 
         Writer writer;
+        boolean shouldClose;
         if (cmdLine.hasOption(outputOpt)) {
+          shouldClose = true;
           writer = Files.newWriter(new File(cmdLine.getValue(outputOpt).toString()), Charsets.UTF_8);
         } else {
+          shouldClose = false;
           writer = new OutputStreamWriter(System.out);
         }
         try {
@@ -145,8 +148,11 @@ public final class SequenceFileDumper {
           }
           writer.append("Total count: ").append(String.valueOf(itemCount)).append('\n');
 
+          writer.flush();
         } finally {
-          Closeables.closeQuietly(writer);
+          if (shouldClose) {
+            Closeables.closeQuietly(writer);
+          }
         }
       }
 

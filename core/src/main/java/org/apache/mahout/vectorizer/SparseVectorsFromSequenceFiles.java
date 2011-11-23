@@ -33,8 +33,10 @@ import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.mahout.common.AbstractJob;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.CommandLineUtil;
 import org.apache.mahout.common.HadoopUtil;
+import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.vectorizer.collocations.llr.LLRReducer;
 import org.apache.mahout.vectorizer.common.PartialVectorMerger;
 import org.apache.mahout.vectorizer.document.AbstractTokenizerMapper;
@@ -51,9 +53,6 @@ public final class SparseVectorsFromSequenceFiles extends AbstractJob {
   
   private static final Logger log = LoggerFactory.getLogger(SparseVectorsFromSequenceFiles.class);
   
-  private SparseVectorsFromSequenceFiles() {
-  }
-  
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new SparseVectorsFromSequenceFiles(), args);
   }
@@ -64,13 +63,9 @@ public final class SparseVectorsFromSequenceFiles extends AbstractJob {
     ArgumentBuilder abuilder = new ArgumentBuilder();
     GroupBuilder gbuilder = new GroupBuilder();
     
-    Option inputDirOpt = obuilder.withLongName("input").withRequired(true).withArgument(
-      abuilder.withName("input").withMinimum(1).withMaximum(1).create()).withDescription(
-      "input dir containing the documents in sequence file format").withShortName("i").create();
+    Option inputDirOpt = DefaultOptionCreator.inputOption().create();
     
-    Option outputDirOpt = obuilder.withLongName("output").withRequired(true).withArgument(
-      abuilder.withName("output").withMinimum(1).withMaximum(1).create()).withDescription(
-      "The output directory").withShortName("o").create();
+    Option outputDirOpt = DefaultOptionCreator.outputOption().create();
     
     Option minSupportOpt = obuilder.withLongName("minSupport").withArgument(
       abuilder.withName("minSupport").withMinimum(1).withMaximum(1).create()).withDescription(
@@ -204,14 +199,14 @@ public final class SparseVectorsFromSequenceFiles extends AbstractJob {
         reduceTasks = Integer.parseInt(cmdLine.getValue(numReduceTasksOpt).toString());
       }
       log.info("Number of reduce tasks: {}", reduceTasks);
-      
+
       Class<? extends Analyzer> analyzerClass = DefaultAnalyzer.class;
       if (cmdLine.hasOption(analyzerNameOpt)) {
         String className = cmdLine.getValue(analyzerNameOpt).toString();
         analyzerClass = Class.forName(className).asSubclass(Analyzer.class);
         // try instantiating it, b/c there isn't any point in setting it if
         // you can't instantiate it
-        analyzerClass.newInstance();
+        ClassUtils.instantiateAs(analyzerClass, Analyzer.class);
       }
       
       boolean processIdf;
@@ -279,19 +274,20 @@ public final class SparseVectorsFromSequenceFiles extends AbstractJob {
 
       Configuration conf = getConf();
       Path tokenizedPath = new Path(outputDir, DocumentProcessor.TOKENIZED_DOCUMENT_OUTPUT_FOLDER);
+      
+      //TODO: move this into DictionaryVectorizer , and then fold SparseVectorsFrom with EncodedVectorsFrom to have one framework for all of this.
       DocumentProcessor.tokenizeDocuments(inputDir, inputFormatClass, mapperClass,
           analyzerClass, tokenizedPath, conf);
-      
+
       boolean sequentialAccessOutput = false;
       if (cmdLine.hasOption(sequentialAccessVectorOpt)) {
         sequentialAccessOutput = true;
       }
-      
+
       boolean namedVectors = false;
       if (cmdLine.hasOption(namedVectorOpt)) {
         namedVectors = true;
       }
-      
       if (!processIdf) {
         DictionaryVectorizer.createTermFrequencyVectors(tokenizedPath, outputDir, conf, minSupport, maxNGramSize,
           minLLRValue, norm, logNormalize, reduceTasks, chunkSize, sequentialAccessOutput, namedVectors);

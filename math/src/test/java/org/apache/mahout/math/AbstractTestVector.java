@@ -84,7 +84,7 @@ public abstract class AbstractTestVector extends MahoutTestCase {
   private static void checkIterator(Iterator<Vector.Element> nzIter, double[] values) {
     while (nzIter.hasNext()) {
       Vector.Element elt = nzIter.next();
-      assertEquals((elt.index()) + " Value: " + values[elt.index()]
+      assertEquals(elt.index() + " Value: " + values[elt.index()]
           + " does not equal: " + elt.get(), values[elt.index()], elt.get(), 0.0);
     }
   }
@@ -159,7 +159,7 @@ public abstract class AbstractTestVector extends MahoutTestCase {
   }
 
   @Test
-  public void testSize() throws Exception {
+  public void testSize() {
     assertEquals("size", 3, test.getNumNondefaultElements());
   }
 
@@ -444,10 +444,10 @@ public abstract class AbstractTestVector extends MahoutTestCase {
   @Test
   public void testCrossProduct() {
     Matrix result = test.cross(test);
-    assertEquals("row size", test.size(), result.size()[0]);
-    assertEquals("col size", test.size(), result.size()[1]);
-    for (int row = 0; row < result.size()[0]; row++) {
-      for (int col = 0; col < result.size()[1]; col++) {
+    assertEquals("row size", test.size(), result.rowSize());
+    assertEquals("col size", test.size(), result.columnSize());
+    for (int row = 0; row < result.rowSize(); row++) {
+      for (int col = 0; col < result.columnSize(); col++) {
         assertEquals("cross[" + row + "][" + col + ']', test.getQuick(row)
             * test.getQuick(col), result.getQuick(row, col), EPSILON);
       }

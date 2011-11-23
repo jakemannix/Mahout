@@ -103,15 +103,15 @@ public class Gamma extends AbstractContinousDistribution {
     if (alpha < 1.0) { // CASE A: Acceptance rejection algorithm gs
       b = 1.0 + 0.36788794412 * alpha;              // Step 1
       while (true) {
-        double p = b * randomGenerator.nextDouble();
+        double p = b * randomDouble();
         if (p <= 1.0) {                       // Step 2. Case gds <= 1
           gds = Math.exp(Math.log(p) / alpha);
-          if (Math.log(randomGenerator.nextDouble()) <= -gds) {
+          if (Math.log(randomDouble()) <= -gds) {
             return gds / rate;
           }
         } else {                                // Step 3. Case gds > 1
           gds = -Math.log((b - p) / alpha);
-          if (Math.log(randomGenerator.nextDouble()) <= (alpha - 1.0) * Math.log(gds)) {
+          if (Math.log(randomDouble()) <= (alpha - 1.0) * Math.log(gds)) {
             return gds / rate;
           }
         }
@@ -129,8 +129,8 @@ public class Gamma extends AbstractContinousDistribution {
       double v12;
       double v1;
       do {
-        v1 = 2.0 * randomGenerator.nextDouble() - 1.0;
-        double v2 = 2.0 * randomGenerator.nextDouble() - 1.0;
+        v1 = 2.0 * randomDouble() - 1.0;
+        double v2 = 2.0 * randomDouble() - 1.0;
         v12 = v1 * v1 + v2 * v2;
       } while (v12 > 1.0);
       double t = v1 * Math.sqrt(-2.0 * Math.log(v12) / v12);
@@ -140,7 +140,7 @@ public class Gamma extends AbstractContinousDistribution {
         return gds / rate;
       }         // Immediate acceptance
 
-      double u = randomGenerator.nextDouble();
+      double u = randomDouble();
       if (d * u <= t * t * t) {
         return gds / rate;
       } // Squeeze acceptance
@@ -190,12 +190,12 @@ public class Gamma extends AbstractContinousDistribution {
       if (x > 0.0) {                        // Step 5. Calculation of q
         v = t / (s + s);                  // Step 6.
         if (Math.abs(v) > 0.25) {
-          q = q0 - s * t + 0.25 * t * t + (ss + ss) * Math.log(1.0 + v);
+          q = q0 - s * t + 0.25 * t * t + (ss + ss) * Math.log1p(v);
         } else {
           q = q0 + 0.5 * t * t * ((((((((a9 * v + a8) * v + a7) * v + a6)
               * v + a5) * v + a4) * v + a3) * v + a2) * v + a1) * v;
         }                  // Step 7. Quotient acceptance
-        if (Math.log(1.0 - u) <= q) {
+        if (Math.log1p(-u) <= q) {
           return gds / rate;
         }
       }
@@ -211,15 +211,15 @@ public class Gamma extends AbstractContinousDistribution {
         double sign_u;
         double e;
         do {
-          e = -Math.log(randomGenerator.nextDouble());
-          u = randomGenerator.nextDouble();
+          e = -Math.log(randomDouble());
+          u = randomDouble();
           u = u + u - 1.0;
           sign_u = u > 0 ? 1.0 : -1.0;
           t = b + e * si * sign_u;
         } while (t <= -0.71874483771719); // Step 9. Rejection of t
         v = t / (s + s);                  // Step 10. New q(t)
         if (Math.abs(v) > 0.25) {
-          q = q0 - s * t + 0.25 * t * t + (ss + ss) * Math.log(1.0 + v);
+          q = q0 - s * t + 0.25 * t * t + (ss + ss) * Math.log1p(v);
         } else {
           q = q0 + 0.5 * t * t * ((((((((a9 * v + a8) * v + a7) * v + a6)
               * v + a5) * v + a4) * v + a3) * v + a2) * v + a1) * v;
@@ -266,6 +266,7 @@ public class Gamma extends AbstractContinousDistribution {
     return rate * Math.exp((alpha - 1.0) * Math.log(x * rate) - x * rate - logGamma(alpha));
   }
 
+  @Override
   public String toString() {
     return this.getClass().getName() + '(' + rate + ',' + alpha + ')';
   }

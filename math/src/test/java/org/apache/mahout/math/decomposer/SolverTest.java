@@ -18,6 +18,7 @@
 package org.apache.mahout.math.decomposer;
 
 import com.google.common.collect.Lists;
+import org.apache.mahout.common.RandomUtils;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.MahoutTestCase;
@@ -44,9 +45,9 @@ public abstract class SolverTest extends MahoutTestCase {
   public static void assertOrthonormal(Matrix currentEigens, double errorMargin) {
     List<String> nonOrthogonals = Lists.newArrayList();
     for (int i = 0; i < currentEigens.numRows(); i++) {
-      Vector ei = currentEigens.getRow(i);
+      Vector ei = currentEigens.viewRow(i);
       for (int j = 0; j <= i; j++) {
-        Vector ej = currentEigens.getRow(j);
+        Vector ej = currentEigens.viewRow(j);
         if (ei.norm(2) == 0 || ej.norm(2) == 0) {
           continue;
         }
@@ -55,12 +56,12 @@ public abstract class SolverTest extends MahoutTestCase {
           assertTrue("not norm 1 : " + dot + " (eigen #" + i + ')', Math.abs(1.0 - dot) < errorMargin);
         } else {
           if(Math.abs(dot) > errorMargin) {
-            log.info("not orthogonal : " + dot + " (eigens " + i + ", " + j + ')', Math.abs(dot) < errorMargin);
+            log.info("not orthogonal : {} (eigens {}, {})", new Object[] {dot, i, j});
             nonOrthogonals.add("(" + i + ',' + j + ')');
           }
         }
       }
-      log.info(nonOrthogonals.size() + ": " + nonOrthogonals.toString());
+      log.info("{}:{}", nonOrthogonals.size(), nonOrthogonals);
     }
   }
 
@@ -79,13 +80,13 @@ public abstract class SolverTest extends MahoutTestCase {
           assertTrue("not norm 1 : " + dot + " (eigen #" + i + ')', Math.abs(1.0 - dot) < errorMargin);
         } else {
           if(Math.abs(dot) > errorMargin) {
-            log.info("not orthogonal : " + dot + " (eigens " + i + ", " + j + ')', Math.abs(dot) < errorMargin);
+            log.info("not orthogonal : {} (eigens {}, {})", new Object[] {dot, i, j});
             nonOrthogonals.add("(" + i + ',' + j + ')');
           }
         }
       }
       if (!nonOrthogonals.isEmpty()) {
-        log.info(nonOrthogonals.size() + ": " + nonOrthogonals.toString());
+        log.info("{}:{}", nonOrthogonals.size(), nonOrthogonals);
       }
     }
   }
@@ -100,7 +101,7 @@ public abstract class SolverTest extends MahoutTestCase {
                                  double errorMargin,
                                  boolean isSymmetric) {
     for (int i = 0; i < numEigensToCheck; i++) {
-      Vector e = eigens.getRow(i);
+      Vector e = eigens.viewRow(i);
       assertEigen(i, e, corpus, errorMargin, isSymmetric);
     }
   }
@@ -127,12 +128,11 @@ public abstract class SolverTest extends MahoutTestCase {
                                                           int numCols,
                                                           int entriesPerRow,
                                                           double entryMean) {
-    Matrix m = new SparseRowMatrix(new int[]{numRows, numCols});
+    Matrix m = new SparseRowMatrix(numRows, numCols);
     //double n = 0;
-    //Random r = RandomUtils.getRandom();
-    Random r = new Random(1234L);
+    Random r = RandomUtils.getRandom();
     for (int i = 0; i < nonNullRows; i++) {
-      SequentialAccessSparseVector v = new SequentialAccessSparseVector(numCols);
+      Vector v = new SequentialAccessSparseVector(numCols);
       for (int j = 0; j < entriesPerRow; j++) {
         int col = r.nextInt(numCols);
         double val = r.nextGaussian();
@@ -142,7 +142,7 @@ public abstract class SolverTest extends MahoutTestCase {
       if (r.nextBoolean() || numRows == nonNullRows) {
         m.assignRow(numRows == nonNullRows ? i : c, v);
       } else {
-        Vector other = m.getRow(r.nextInt(numRows));
+        Vector other = m.viewRow(r.nextInt(numRows));
         if (other != null && other.getLengthSquared() > 0) {
           m.assignRow(c, other.clone());
         }

@@ -30,13 +30,15 @@ import java.util.regex.Pattern;
 public abstract class ToEntityPrefsMapper extends
     Mapper<LongWritable,Text, VarLongWritable,VarLongWritable> {
 
-  public static final String TRANSPOSE_USER_ITEM = "transposeUserItem";
+  public static final String TRANSPOSE_USER_ITEM = ToEntityPrefsMapper.class + "transposeUserItem";
+  public static final String RATING_SHIFT = ToEntityPrefsMapper.class + "shiftRatings";
 
   private static final Pattern DELIMITER = Pattern.compile("[\t,]");
 
   private boolean booleanData;
   private boolean transpose;
   private final boolean itemKey;
+  private float ratingShift;
 
   ToEntityPrefsMapper(boolean itemKey) {
     this.itemKey = itemKey;
@@ -47,13 +49,14 @@ public abstract class ToEntityPrefsMapper extends
     Configuration jobConf = context.getConfiguration();
     booleanData = jobConf.getBoolean(RecommenderJob.BOOLEAN_DATA, false);
     transpose = jobConf.getBoolean(TRANSPOSE_USER_ITEM, false);
+    ratingShift = Float.parseFloat(jobConf.get(RATING_SHIFT, "0.0"));
   }
 
   @Override
   public void map(LongWritable key,
                   Text value,
                   Context context) throws IOException, InterruptedException {
-    String[] tokens = ToEntityPrefsMapper.DELIMITER.split(value.toString());
+    String[] tokens = DELIMITER.split(value.toString());
     long userID = Long.parseLong(tokens[0]);
     long itemID = Long.parseLong(tokens[1]);
     if (itemKey ^ transpose) {
@@ -67,7 +70,7 @@ public abstract class ToEntityPrefsMapper extends
     if (booleanData) {
       context.write(new VarLongWritable(userID), new VarLongWritable(itemID));
     } else {
-      float prefValue = tokens.length > 2 ? Float.parseFloat(tokens[2]) : 1.0f;
+      float prefValue = tokens.length > 2 ? Float.parseFloat(tokens[2]) + ratingShift : 1.0f;
       context.write(new VarLongWritable(userID), new EntityPrefWritable(itemID, prefValue));
     }
   }

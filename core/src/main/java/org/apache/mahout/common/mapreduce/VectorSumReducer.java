@@ -21,26 +21,24 @@ import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
+import org.apache.mahout.math.function.Functions;
 
 import java.io.IOException;
 
-/**
- * Can also be used as a local combiner.
- */
 public class VectorSumReducer
     extends Reducer<WritableComparable<?>, VectorWritable, WritableComparable<?>, VectorWritable> {
 
   @Override
-  protected void reduce(WritableComparable<?> key, Iterable<VectorWritable> values, Context context)
+  protected void reduce(WritableComparable<?> key, Iterable<VectorWritable> values, Context ctx)
     throws IOException, InterruptedException {
     Vector vector = null;
     for (VectorWritable v : values) {
       if (vector == null) {
         vector = v.get();
       } else {
-        v.get().addTo(vector);
+        vector.assign(v.get(), Functions.PLUS);
       }
     }
-    context.write(key, new VectorWritable(vector));
+    ctx.write(key, new VectorWritable(vector));
   }
 }

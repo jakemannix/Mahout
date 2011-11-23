@@ -65,20 +65,20 @@ public class SequentialAccessSparseVector extends AbstractVector {
 
   public SequentialAccessSparseVector(Vector other) {
     this(other.size(), other.getNumNondefaultElements());
-    
-    if (!other.isSequentialAccess()) {
-      // If the incoming Vector to copy is random, then adding items
-      // from the Iterator can degrade performance dramatically if 
-      // the number of elements is large as this Vector tries to stay
-      // in order as items are added, so it's better to sort the other
-      // Vector's elements by index and then add them to this
-      copySortedRandomAccessSparseVector(other);
-    } else {
+
+    if (other.isSequentialAccess()) {
       Iterator<Element> it = other.iterateNonZero();
       Element e;
       while (it.hasNext() && (e = it.next()) != null) {
         set(e.index(), e.get());
       }
+    } else {
+      // If the incoming Vector to copy is random, then adding items
+      // from the Iterator can degrade performance dramatically if
+      // the number of elements is large as this Vector tries to stay
+      // in order as items are added, so it's better to sort the other
+      // Vector's elements by index and then add them to this
+      copySortedRandomAccessSparseVector(other);
     }    
   }
 
@@ -118,8 +118,7 @@ public class SequentialAccessSparseVector extends AbstractVector {
 
   @Override
   protected Matrix matrixLike(int rows, int columns) {
-    int[] cardinality = {rows, columns};
-    return new SparseRowMatrix(cardinality);
+    return new SparseRowMatrix(rows, columns);
   }
 
   @Override
@@ -209,56 +208,6 @@ public class SequentialAccessSparseVector extends AbstractVector {
   @Override
   public Iterator<Element> iterator() {
     return new AllIterator();
-  }
-
-  @Override
-  public double dot(Vector x) {
-    if (size() != x.size()) {
-      throw new CardinalityException(size(), x.size());
-    }
-    if (this == x) {
-      return dotSelf();
-    }
-
-    if (x instanceof SequentialAccessSparseVector) {
-      // For sparse SeqAccVectors. do dot product without lookup in a linear fashion
-      Iterator<Element> myIter = iterateNonZero();
-      Iterator<Element> otherIter = x.iterateNonZero();
-      if (!myIter.hasNext() || !otherIter.hasNext()) {
-        return 0.0;
-      }
-      Element myCurrent = myIter.next();
-      Element otherCurrent = otherIter.next();
-      double result = 0.0;
-      while (true) {
-        int myIndex = myCurrent.index();
-        int otherIndex = otherCurrent.index();
-        if (myIndex == otherIndex) {
-          result += myCurrent.get() * otherCurrent.get();
-        }
-        if (myIndex <= otherIndex) {
-          if (!myIter.hasNext()) {
-            break;
-          }
-          myCurrent = myIter.next();
-        }
-        if (myIndex >= otherIndex) {
-          if (!otherIter.hasNext()) {
-            break;
-          }
-          otherCurrent = otherIter.next();
-        }
-      }
-      return result;
-    } else { // seq.rand. seq.dense
-      double result = 0.0;
-      Iterator<Element> iter = iterateNonZero();
-      while (iter.hasNext()) {
-        Element element = iter.next();
-        result += element.get() * x.getQuick(element.index());
-      }
-      return result;
-    }
   }
 
   @Override

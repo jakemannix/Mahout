@@ -31,12 +31,13 @@ import org.junit.Test;
 
 public class IndexInstancesMapperTest extends MahoutTestCase {
 
-  Mapper.Context ctx;
-  OpenObjectIntHashMap<String> labelIndex;
-  VectorWritable instance;
+  private Mapper.Context ctx;
+  private OpenObjectIntHashMap<String> labelIndex;
+  private VectorWritable instance;
 
+  @Override
   @Before
-  public void setup() throws Exception {
+  public void setUp() throws Exception {
     super.setUp();
 
     ctx = EasyMock.createMock(Mapper.Context.class);

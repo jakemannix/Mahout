@@ -25,6 +25,7 @@ import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.mahout.clustering.Cluster;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.distance.DistanceMeasure;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.common.iterator.sequencefile.PathType;
@@ -71,11 +72,8 @@ public class ClusterEvaluator {
    * @param clustersIn
    *            a String path to the input clusters directory
    */
-  public ClusterEvaluator(Configuration conf, Path clustersIn)
-    throws ClassNotFoundException, InstantiationException, IllegalAccessException {
-    ClassLoader ccl = Thread.currentThread().getContextClassLoader();
-    measure = ccl.loadClass(conf.get(RepresentativePointsDriver.DISTANCE_MEASURE_KEY)).asSubclass(DistanceMeasure.class)
-        .newInstance();
+  public ClusterEvaluator(Configuration conf, Path clustersIn) {
+    measure = ClassUtils.instantiateAs(conf.get(RepresentativePointsDriver.DISTANCE_MEASURE_KEY), DistanceMeasure.class);
     representativePoints = RepresentativePointsMapper.getRepresentativePoints(conf);
     clusters = loadClusters(conf, clustersIn);
   }
@@ -125,7 +123,7 @@ public class ClusterEvaluator {
     for (Iterator<Cluster> it = clusters.iterator(); it.hasNext();) {
       Cluster cluster = it.next();
       if (invalidCluster(cluster)) {
-        log.info("Pruning cluster Id=" + cluster.getId());
+        log.info("Pruning cluster Id={}", cluster.getId());
         it.remove();
         representativePoints.remove(cluster.getId());
       }
@@ -156,7 +154,7 @@ public class ClusterEvaluator {
       }
     }
     double density = (sum / count - min) / (max - min);
-    log.info("Inter-Cluster Density = " + density);
+    log.info("Inter-Cluster Density = {}", density);
     return density;
   }
 
@@ -186,10 +184,10 @@ public class ClusterEvaluator {
       }
       double density = (sum / count - min) / (max - min);
       avgDensity += density;
-      log.info("Intra-Cluster Density[" + cluster.getId() + "] = " + density);
+      log.info("Intra-Cluster Density[{}] = {}", cluster.getId(), density);
     }
     avgDensity = clusters.isEmpty() ? 0 : avgDensity / clusters.size();
-    log.info("Intra-Cluster Density = " + avgDensity);
+    log.info("Intra-Cluster Density = {}", avgDensity);
     return avgDensity;
 
   }

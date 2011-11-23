@@ -80,7 +80,7 @@ public class BayesFeatureMapper extends MapReduceBase implements Mapper<Text,Tex
       ShingleFilter sf = new ShingleFilter(new IteratorTokenStream(Iterators.forArray(tokens)), gramSize);
       do {
         String term = sf.getAttribute(CharTermAttribute.class).toString();
-        if (term.length() > 0) {
+        if (!term.isEmpty()) {
           if (wordList.containsKey(term)) {
             wordList.put(term, 1 + wordList.get(term));
           } else {
@@ -119,7 +119,7 @@ public class BayesFeatureMapper extends MapReduceBase implements Mapper<Text,Tex
           tuple.add(BayesConstants.WEIGHT);
           tuple.add(label);
           tuple.add(token);
-          DoubleWritable f = new DoubleWritable(Math.log(1.0 + dKJ) / lengthNormalisation);
+          DoubleWritable f = new DoubleWritable(Math.log1p(dKJ) / lengthNormalisation);
           output.collect(tuple, f);
         } catch (IOException e) {
           throw new IllegalStateException(e);

@@ -474,7 +474,8 @@ public final class MongoDBDataModel implements DataModel {
     DBObject objectIdLong = collectionMap.findOne(new BasicDBObject("element_id", id));
     if (objectIdLong != null) {
       Map<String,Object> idLong = (Map<String,Object>) objectIdLong.toMap();
-      return (String) idLong.get("long_value");
+      Object value = idLong.get("long_value");
+      return value == null ? null : value.toString();
     } else {
       objectIdLong = new BasicDBObject();
       String longValue = Long.toString(idCounter++);
@@ -511,7 +512,8 @@ public final class MongoDBDataModel implements DataModel {
   public String fromLongToId(long id) {
     DBObject objectIdLong = collectionMap.findOne(new BasicDBObject("long_value", Long.toString(id)));
     Map<String,Object> idLong = (Map<String,Object>) objectIdLong.toMap();
-    return (String) idLong.get("element_id");
+    Object value = idLong.get("element_id");
+    return value == null ? null : value.toString();
   }
 
   /**
@@ -706,9 +708,12 @@ public final class MongoDBDataModel implements DataModel {
   private Date getDate(Object date) {
     if (date.getClass().getName().contains("Date")) {
       return (Date) date;
-    } else if (date.getClass().getName().contains("String")) {
+    }
+    if (date.getClass().getName().contains("String")) {
       try {
-        return dateFormat.parse((String) date);
+        synchronized (dateFormat) {
+          return dateFormat.parse(date.toString());
+        }
       } catch (ParseException ioe) {
         log.warn("Error parsing timestamp", ioe);
       }
@@ -720,7 +725,7 @@ public final class MongoDBDataModel implements DataModel {
     if (value != null) {
       if (value.getClass().getName().contains("String")) {
         preferenceIsString = true;
-        return Float.parseFloat((String) value);
+        return Float.parseFloat(value.toString());
       } else {
         preferenceIsString = false;
         return Double.valueOf(value.toString()).floatValue();
@@ -739,7 +744,7 @@ public final class MongoDBDataModel implements DataModel {
       }
       return ((ObjectId) id).toStringMongod();
     } else {
-      return (String) id;
+      return id.toString();
     }
   }
 
@@ -748,10 +753,10 @@ public final class MongoDBDataModel implements DataModel {
                          boolean add) throws NoSuchUserException, NoSuchItemException {
     Preconditions.checkNotNull(userID);
     Preconditions.checkNotNull(items);
-    Preconditions.checkArgument(userID.length() > 0);
+    Preconditions.checkArgument(!userID.isEmpty());
     for (List<String> item : items) {
       Preconditions.checkNotNull(item.get(0));
-      Preconditions.checkArgument(item.get(0).length() > 0);
+      Preconditions.checkArgument(!item.get(0).isEmpty());
     }
     if (userIsObject && !ID_PATTERN.matcher(userID).matches()) {
       throw new IllegalArgumentException();

@@ -68,8 +68,8 @@ public class Normal extends AbstractContinousDistribution {
     double y;
     double r;
     do {
-      x = 2.0 * randomGenerator.nextDouble() - 1.0;
-      y = 2.0 * randomGenerator.nextDouble() - 1.0;
+      x = 2.0 * randomDouble() - 1.0;
+      y = 2.0 * randomDouble() - 1.0;
       r = x * x + y * y;
     } while (r >= 1.0);
 
@@ -103,6 +103,7 @@ public class Normal extends AbstractContinousDistribution {
   }
 
   /** Returns a String representation of the receiver. */
+  @Override
   public String toString() {
     return String.format(Locale.ENGLISH, "%s(m=%f, sd=%f)", this.getClass().getName(), mean, standardDeviation);
   }

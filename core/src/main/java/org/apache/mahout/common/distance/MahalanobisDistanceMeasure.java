@@ -17,44 +17,44 @@
 
 package org.apache.mahout.common.distance;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.common.io.Closeables;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.mahout.common.ClassUtils;
+import org.apache.mahout.common.parameters.ClassParameter;
+import org.apache.mahout.common.parameters.Parameter;
+import org.apache.mahout.common.parameters.PathParameter;
+import org.apache.mahout.math.Algebra;
+import org.apache.mahout.math.CardinalityException;
+import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.DenseVector;
+import org.apache.mahout.math.Matrix;
+import org.apache.mahout.math.MatrixWritable;
+import org.apache.mahout.math.SingularValueDecomposition;
+import org.apache.mahout.math.Vector;
+import org.apache.mahout.math.VectorWritable;
+
 import java.io.DataInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 
-import com.google.common.collect.Lists;
-import com.google.common.io.Closeables;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.mahout.common.parameters.ClassParameter;
-import org.apache.mahout.common.parameters.Parameter;
-import org.apache.mahout.common.parameters.PathParameter;
-import org.apache.mahout.math.CardinalityException;
-import org.apache.mahout.math.DenseMatrix;
-import org.apache.mahout.math.DenseVector;
-import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.Matrix;
-import org.apache.mahout.math.Algebra;
-import org.apache.mahout.math.SingularValueDecomposition;
-import org.apache.mahout.math.VectorWritable;
-import org.apache.mahout.math.MatrixWritable;
-
-import com.google.common.base.Preconditions;
-
 //See http://en.wikipedia.org/wiki/Mahalanobis_distance for details
 public class MahalanobisDistanceMeasure implements DistanceMeasure {
-  
+
   private Matrix inverseCovarianceMatrix;
   private Vector meanVector;
-  
+
   private ClassParameter vectorClass;
   private ClassParameter matrixClass;
   private List<Parameter<?>> parameters;
   private Parameter<Path> inverseCovarianceFile;
   private Parameter<Path> meanVectorFile;
-  
+
   /*public MahalanobisDistanceMeasure(Vector meanVector,Matrix inputMatrix, boolean inversionNeeded)
   {
     this.meanVector=meanVector;
@@ -63,7 +63,7 @@ public class MahalanobisDistanceMeasure implements DistanceMeasure {
     else
       setInverseCovarianceMatrix(inputMatrix);  
   }*/
-  
+
   @Override
   public void configure(Configuration jobConf) {
     if (parameters == null) {
@@ -72,7 +72,8 @@ public class MahalanobisDistanceMeasure implements DistanceMeasure {
     try {
       if (inverseCovarianceFile.get() != null) {
         FileSystem fs = FileSystem.get(inverseCovarianceFile.get().toUri(), jobConf);
-        MatrixWritable inverseCovarianceMatrix = (MatrixWritable) matrixClass.get().newInstance();
+        MatrixWritable inverseCovarianceMatrix = 
+            ClassUtils.instantiateAs((Class<? extends MatrixWritable>) matrixClass.get(), MatrixWritable.class);
         if (!fs.exists(inverseCovarianceFile.get())) {
           throw new FileNotFoundException(inverseCovarianceFile.get().toString());
         }
@@ -83,11 +84,13 @@ public class MahalanobisDistanceMeasure implements DistanceMeasure {
           Closeables.closeQuietly(in);
         }
         this.inverseCovarianceMatrix = inverseCovarianceMatrix.get();
+        Preconditions.checkArgument(inverseCovarianceMatrix != null, "inverseCovarianceMatrix not initialized");
       }
-      
+
       if (meanVectorFile.get() != null) {
         FileSystem fs = FileSystem.get(meanVectorFile.get().toUri(), jobConf);
-        VectorWritable meanVector = (VectorWritable) vectorClass.get().newInstance();
+        VectorWritable meanVector = 
+            ClassUtils.instantiateAs((Class<? extends VectorWritable>) vectorClass.get(), VectorWritable.class);
         if (!fs.exists(meanVectorFile.get())) {
           throw new FileNotFoundException(meanVectorFile.get().toString());
         }
@@ -98,80 +101,73 @@ public class MahalanobisDistanceMeasure implements DistanceMeasure {
           Closeables.closeQuietly(in);
         }
         this.meanVector = meanVector.get();
+        Preconditions.checkArgument(meanVector != null, "meanVector not initialized");
       }
-      
+
     } catch (IOException e) {
-      throw new IllegalStateException(e);
-    } catch (IllegalAccessException e) {
-      throw new IllegalStateException(e);
-    } catch (InstantiationException e) {
       throw new IllegalStateException(e);
     }
   }
-  
+
   @Override
   public Collection<Parameter<?>> getParameters() {
     return parameters;
   }
-  
+
   @Override
   public void createParameters(String prefix, Configuration jobConf) {
     parameters = Lists.newArrayList();
     inverseCovarianceFile = new PathParameter(prefix, "inverseCovarianceFile", jobConf, null,
-                                              "Path on DFS to a file containing the inverse covariance matrix.");
+            "Path on DFS to a file containing the inverse covariance matrix.");
     parameters.add(inverseCovarianceFile);
 
     matrixClass = new ClassParameter(prefix, "maxtrixClass", jobConf, DenseMatrix.class,
-        "Class<Matix> file specified in parameter inverseCovarianceFile has been serialized with.");
-    parameters.add(matrixClass);      
-    
+            "Class<Matix> file specified in parameter inverseCovarianceFile has been serialized with.");
+    parameters.add(matrixClass);
+
     meanVectorFile = new PathParameter(prefix, "meanVectorFile", jobConf, null,
-                                       "Path on DFS to a file containing the mean Vector.");
+            "Path on DFS to a file containing the mean Vector.");
     parameters.add(meanVectorFile);
-    
-    vectorClass = new ClassParameter(prefix, "vectorClass", jobConf, DenseVector.class, 
-                                     "Class file specified in parameter meanVectorFile has been serialized with.");
-    parameters.add(vectorClass);     
+
+    vectorClass = new ClassParameter(prefix, "vectorClass", jobConf, DenseVector.class,
+            "Class file specified in parameter meanVectorFile has been serialized with.");
+    parameters.add(vectorClass);
   }
-  
-  /**   
+
+  /**
+   * @param v The vector to compute the distance to
    * @return Mahalanobis distance of a multivariate vector
    */
   public double distance(Vector v) {
-    Preconditions.checkArgument(meanVector != null, "meanVector not initialized");
-    Preconditions.checkArgument(inverseCovarianceMatrix != null, "inverseCovarianceMatrix not initialized");
     return Math.sqrt(v.minus(meanVector).dot(Algebra.mult(inverseCovarianceMatrix, v.minus(meanVector))));
   }
-  
+
   @Override
   public double distance(Vector v1, Vector v2) {
     if (v1.size() != v2.size()) {
       throw new CardinalityException(v1.size(), v2.size());
     }
-    Preconditions.checkArgument(meanVector != null, "meanVector not initialized");
-    Preconditions.checkArgument(inverseCovarianceMatrix != null, "inverseCovarianceMatrix not initialized");
-    
     return Math.sqrt(v1.minus(v2).dot(Algebra.mult(inverseCovarianceMatrix, v1.minus(v2))));
   }
-  
+
   @Override
   public double distance(double centroidLengthSquare, Vector centroid, Vector v) {
     return distance(centroid, v); // TODO
   }
-  
+
   public void setInverseCovarianceMatrix(Matrix inverseCovarianceMatrix) {
+    Preconditions.checkArgument(inverseCovarianceMatrix != null, "inverseCovarianceMatrix not initialized");
     this.inverseCovarianceMatrix = inverseCovarianceMatrix;
   }
-  
-  
+
+
   /**
    * Computes the inverse covariance from the input covariance matrix given in input.
-   * @param m
-   *            A covariance matrix.
-   * @throws IllegalArgumentException
-   *             if <tt>eigen values equal to 0 found</tt>.
+   *
+   * @param m A covariance matrix.
+   * @throws IllegalArgumentException if <tt>eigen values equal to 0 found</tt>.
    */
-  public void setCovarianceMatrix(Matrix m) {    
+  public void setCovarianceMatrix(Matrix m) {
     if (m.numRows() != m.numCols()) {
       throw new CardinalityException(m.numRows(), m.numCols());
     }
@@ -182,7 +178,7 @@ public class MahalanobisDistanceMeasure implements DistanceMeasure {
     Matrix sInv = svd.getS();
     // Inverse Diagonal Elems
     for (int i = 0; i < sInv.numRows(); i++) {
-      double diagElem = sInv.get(i,i);
+      double diagElem = sInv.get(i, i);
       if (diagElem > 0.0) {
         sInv.set(i, i, 1 / diagElem);
       } else {
@@ -190,16 +186,18 @@ public class MahalanobisDistanceMeasure implements DistanceMeasure {
       }
     }
     inverseCovarianceMatrix = svd.getU().times(sInv.times(svd.getU().transpose()));
+    Preconditions.checkArgument(inverseCovarianceMatrix != null, "inverseCovarianceMatrix not initialized");
   }
-  
+
   public Matrix getInverseCovarianceMatrix() {
     return inverseCovarianceMatrix;
   }
-  
+
   public void setMeanVector(Vector meanVector) {
+    Preconditions.checkArgument(meanVector != null, "meanVector not initialized");
     this.meanVector = meanVector;
   }
-  
+
   public Vector getMeanVector() {
     return meanVector;
   }

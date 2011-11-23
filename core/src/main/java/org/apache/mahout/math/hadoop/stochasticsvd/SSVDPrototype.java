@@ -30,6 +30,8 @@ import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.SingularValueDecomposition;
 import org.apache.mahout.math.Vector;
+import org.apache.mahout.math.function.Functions;
+import org.apache.mahout.math.hadoop.stochasticsvd.qr.GivensThinSolver;
 import org.apache.mahout.math.ssvd.EigenSolverWrapper;
 
 /**
@@ -194,7 +196,7 @@ public class SSVDPrototype {
       public void emitRow(int rowNum, Vector row) {
         Vector btRow = btRows.get(rowNum);
         if (btRow != null) {
-          row.addTo(btRow);
+          btRow.assign(row, Functions.PLUS);
         }
         btRows.put(rowNum, btRow == null ? new DenseVector(row) : btRow);
       }
@@ -202,13 +204,13 @@ public class SSVDPrototype {
 
     SSVDPrototype mapperSimulation = new SSVDPrototype(seed, kp, 3000);
     for (int i = 0; i < m; i++) {
-      mapperSimulation.firstPass(mx.getRow(i));
+      mapperSimulation.firstPass(mx.viewRow(i));
     }
 
     mapperSimulation.finishFirstPass();
 
     for (int i = 0; i < m; i++) {
-      mapperSimulation.secondPass(mx.getRow(i), btEmitter);
+      mapperSimulation.secondPass(mx.viewRow(i), btEmitter);
     }
 
     // LocalSSVDTest.assertOrthonormality(mapperSimulation.m_qt.transpose(),
@@ -222,7 +224,7 @@ public class SSVDPrototype {
       public void emitRow(int rowNum, Vector row) {
         Vector bbtRow = bbt.get(rowNum);
         if (bbtRow != null) {
-          row.addTo(bbtRow);
+          bbtRow.assign(row, Functions.PLUS);
         }
         bbt.put(rowNum, bbtRow == null ? new DenseVector(row) : bbtRow);
       }
@@ -305,7 +307,7 @@ public class SSVDPrototype {
       public void emitRow(int rowNum, Vector row) {
         Vector btRow = btRows.get(rowNum);
         if (btRow != null) {
-          row.addTo(btRow);
+          btRow.assign(row, Functions.PLUS);
         }
         btRows.put(rowNum, btRow == null ? new DenseVector(row) : btRow);
       }
@@ -313,13 +315,13 @@ public class SSVDPrototype {
 
     SSVDPrototype mapperSimulation = new SSVDPrototype(rndSeed, kp, r);
     for (int i = 0; i < m; i++) {
-      mapperSimulation.firstPass(mx.getRow(i));
+      mapperSimulation.firstPass(mx.viewRow(i));
     }
 
     mapperSimulation.finishFirstPass();
 
     for (int i = 0; i < m; i++) {
-      mapperSimulation.secondPass(mx.getRow(i), btEmitter);
+      mapperSimulation.secondPass(mx.viewRow(i), btEmitter);
     }
 
     // LocalSSVDTest.assertOrthonormality(mapperSimulation.m_qt.transpose(),
@@ -333,7 +335,7 @@ public class SSVDPrototype {
       public void emitRow(int rowNum, Vector row) {
         Vector bbtRow = bbt.get(rowNum);
         if (bbtRow != null) {
-          row.addTo(bbtRow);
+          bbtRow.assign(row, Functions.PLUS);
         }
         bbt.put(rowNum, bbtRow == null ? new DenseVector(row) : bbtRow);
       }

@@ -37,6 +37,7 @@ import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
+import org.apache.mahout.math.function.Functions;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -81,13 +82,13 @@ public class MatrixMultiplicationJob extends AbstractJob {
 
   @Override
   public int run(String[] strings) throws Exception {
-    addOption("numRowsA", "nra", "Number of rows of the first input matrix");
-    addOption("numColsA", "nca", "Number of columns of the first input matrix");
-    addOption("numRowsB", "nrb", "Number of rows of the second input matrix");
+    addOption("numRowsA", "nra", "Number of rows of the first input matrix", true);
+    addOption("numColsA", "nca", "Number of columns of the first input matrix", true);
+    addOption("numRowsB", "nrb", "Number of rows of the second input matrix", true);
 
-    addOption("numColsB", "ncb", "Number of columns of the second input matrix");
-    addOption("inputPathA", "ia", "Path to the first input matrix");
-    addOption("inputPathB", "ib", "Path to the second input matrix");
+    addOption("numColsB", "ncb", "Number of columns of the second input matrix", true);
+    addOption("inputPathA", "ia", "Path to the first input matrix", true);
+    addOption("inputPathB", "ib", "Path to the second input matrix", true);
 
     Map<String, String> argMap = parseArguments(strings);
     if (argMap == null) {
@@ -156,7 +157,7 @@ public class MatrixMultiplicationJob extends AbstractJob {
       Vector accumulator = new RandomAccessSparseVector(it.next().get());
       while (it.hasNext()) {
         Vector row = it.next().get();
-        row.addTo(accumulator);
+        accumulator.assign(row, Functions.PLUS);
       }
       out.collect(rowNum, new VectorWritable(new SequentialAccessSparseVector(accumulator)));
     }

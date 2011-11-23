@@ -23,6 +23,7 @@ import org.apache.commons.cli2.builder.DefaultOptionBuilder;
 import org.apache.mahout.clustering.meanshift.MeanShiftCanopyDriver;
 import org.apache.mahout.common.distance.SquaredEuclideanDistanceMeasure;
 import org.apache.mahout.common.kernel.TriangularKernelProfile;
+import org.apache.mahout.vectorizer.DefaultAnalyzer;
 
 public final class DefaultOptionCreator {
   
@@ -58,6 +59,8 @@ public final class DefaultOptionCreator {
   
   public static final String T4_OPTION = "t4";
   
+  public static final String CLUSTER_FILTER_OPTION = "clusterFilter";
+  
   public static final String THRESHOLD_OPTION = "threshold";
   
   public static final String SEQUENTIAL_METHOD = "sequential";
@@ -65,6 +68,8 @@ public final class DefaultOptionCreator {
   public static final String MAPREDUCE_METHOD = "mapreduce";
   
   public static final String KERNEL_PROFILE_OPTION = "kernelProfile";
+
+  public static final String ANALYZER_NAME_OPTION = "analyzerName";
   
   private DefaultOptionCreator() {}
   
@@ -201,7 +206,7 @@ public final class DefaultOptionCreator {
   
   /**
    * Returns a default command line option for specification of T3 (Reducer T1).
-   * Used by Canopy, MeanShift
+   * Used by Canopy
    */
   public static DefaultOptionBuilder t3Option() {
     return new DefaultOptionBuilder()
@@ -216,7 +221,7 @@ public final class DefaultOptionCreator {
   
   /**
    * Returns a default command line option for specification of T4 (Reducer T2).
-   * Used by Canopy, MeanShift
+   * Used by Canopy
    */
   public static DefaultOptionBuilder t4Option() {
     return new DefaultOptionBuilder()
@@ -227,6 +232,21 @@ public final class DefaultOptionCreator {
                 .withMaximum(1).create())
         .withDescription("T4 (Reducer T2) threshold value")
         .withShortName(T4_OPTION);
+  }
+  
+  /**
+ * @return a DefaultOptionBuilder for the clusterFilter option
+ */
+public static DefaultOptionBuilder clusterFilterOption() {
+    return new DefaultOptionBuilder()
+        .withLongName(CLUSTER_FILTER_OPTION)
+        .withShortName("cf")
+        .withRequired(false)
+        .withArgument(
+            new ArgumentBuilder().withName(CLUSTER_FILTER_OPTION).withMinimum(1)
+                .withMaximum(1).create())
+        .withDescription("Cluster filter suppresses small canopies from mapper")
+        .withShortName(CLUSTER_FILTER_OPTION);
   }
   
   /**
@@ -304,6 +324,24 @@ public final class DefaultOptionCreator {
             "If present, run clustering after the iterations have taken place")
         .withShortName("cl");
   }
+
+  /**
+   * Returns a default command line option for specifying a Lucene analyzer class
+   * @return {@link DefaultOptionBuilder}
+   */
+  public static DefaultOptionBuilder analyzerOption() {
+    return new DefaultOptionBuilder()
+        .withLongName(ANALYZER_NAME_OPTION)
+        .withRequired(false)
+        .withDescription(
+            "If present, the name of a Lucene analyzer class to use")
+        .withArgument(
+                new ArgumentBuilder().withName(ANALYZER_NAME_OPTION).withDefault(DefaultAnalyzer.class.getName())
+                .withMinimum(1).withMaximum(1).create()
+        )
+        .withShortName("an");
+  }
+
   
   /**
    * Returns a default command line option for specifying the emitMostLikely

@@ -36,7 +36,10 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.GenericsUtil;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.mahout.analysis.WikipediaAnalyzer;
+import org.apache.mahout.common.ClassUtils;
 import org.apache.mahout.common.CommandLineUtil;
+import org.apache.mahout.common.commandline.DefaultOptionCreator;
+import org.apache.mahout.common.iterator.FileLineIterable;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.iterator.FileLineIterable;
 import org.slf4j.Logger;
@@ -69,13 +72,9 @@ public final class WikipediaDatasetCreatorDriver {
     ArgumentBuilder abuilder = new ArgumentBuilder();
     GroupBuilder gbuilder = new GroupBuilder();
     
-    Option dirInputPathOpt = obuilder.withLongName("input").withRequired(true).withArgument(
-      abuilder.withName("input").withMinimum(1).withMaximum(1).create()).withDescription(
-      "The input directory path").withShortName("i").create();
+    Option dirInputPathOpt = DefaultOptionCreator.inputOption().create();
     
-    Option dirOutputPathOpt = obuilder.withLongName("output").withRequired(true).withArgument(
-      abuilder.withName("output").withMinimum(1).withMaximum(1).create()).withDescription(
-      "The output directory Path").withShortName("o").create();
+    Option dirOutputPathOpt = DefaultOptionCreator.outputOption().create();
     
     Option categoriesOpt = obuilder.withLongName("categories").withRequired(true).withArgument(
       abuilder.withName("categories").withMinimum(1).withMaximum(1).create()).withDescription(
@@ -88,8 +87,7 @@ public final class WikipediaDatasetCreatorDriver {
     Option analyzerOpt = obuilder.withLongName("analyzer").withRequired(false).withArgument(
       abuilder.withName("analyzer").withMinimum(1).withMaximum(1).create()).withDescription(
       "The analyzer to use, must have a no argument constructor").withShortName("a").create();
-    Option helpOpt = obuilder.withLongName("help").withDescription("Print out help").withShortName("h")
-        .create();
+    Option helpOpt = DefaultOptionCreator.helpOption();
     
     Group group = gbuilder.withName("Options").withOption(categoriesOpt).withOption(dirInputPathOpt)
         .withOption(dirOutputPathOpt).withOption(exactMatchOpt).withOption(analyzerOpt).withOption(helpOpt)
@@ -113,7 +111,7 @@ public final class WikipediaDatasetCreatorDriver {
         analyzerClass = Class.forName(className).asSubclass(Analyzer.class);
         // try instantiating it, b/c there isn't any point in setting it if
         // you can't instantiate it
-        analyzerClass.newInstance();
+        ClassUtils.instantiateAs(analyzerClass, Analyzer.class);
       }
       runJob(inputPath, outputPath, catFile, cmdLine.hasOption(exactMatchOpt),
         analyzerClass);
@@ -123,13 +121,7 @@ public final class WikipediaDatasetCreatorDriver {
     } catch (ClassNotFoundException e) {
       log.error("Exception", e);
       CommandLineUtil.printHelp(group);
-    } catch (InstantiationException e) {
-      log.error("Exception", e);
-      CommandLineUtil.printHelp(group);
-    } catch (IllegalAccessException e) {
-      log.error("Exception", e);
-      CommandLineUtil.printHelp(group);
-    } 
+    }
   }
   
   /**
