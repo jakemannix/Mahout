@@ -38,7 +38,7 @@ public abstract class AbstractTokenizerMapper<K,V> extends Mapper<K, V, Text, St
     return key.toString();
   }
 
-  private Analyzer analyzer;
+  protected Analyzer analyzer;
   private Text outputKey = new Text();
 
   @Override

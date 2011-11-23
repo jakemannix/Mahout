@@ -57,7 +57,7 @@ public class MatrixUtils {
     }
     Matrix matrix;
     if(sparse) {
-      matrix = new SparseRowMatrix(new int[] {numRows, numCols}, arrayOfRows);
+      matrix = new SparseRowMatrix(numRows, numCols, arrayOfRows);
     } else {
       matrix = new DenseMatrix(numRows, numCols);
       for(int i = 0; i < numRows; i++) {

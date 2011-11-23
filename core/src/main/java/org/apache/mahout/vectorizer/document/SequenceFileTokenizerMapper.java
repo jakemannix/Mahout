@@ -17,6 +17,8 @@
 
 package org.apache.mahout.vectorizer.document;
 
+import java.io.IOException;
+
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.lucene.analysis.Analyzer;

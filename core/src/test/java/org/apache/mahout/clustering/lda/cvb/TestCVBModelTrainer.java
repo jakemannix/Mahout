@@ -68,7 +68,7 @@ public class TestCVBModelTrainer extends TestCase {
       Vector docTopicCounts = new DenseVector(model.getNumTopics());
       docTopicCounts.assign(1/model.getNumTopics());
       Matrix docTopicModel =
-          new SparseRowMatrix(new int[] {model.getNumTopics(), model.getNumTerms()}, true);
+          new SparseRowMatrix(model.getNumTopics(), model.getNumTerms(), true);
       int i = 0;
       List<String> perplexityStrings = Lists.newArrayList();
       List<Double> perplexities = Lists.newArrayList();
@@ -106,13 +106,13 @@ public class TestCVBModelTrainer extends TestCase {
       List<Pair<Double,Double>> perplexitiesWithWeights = Lists.newArrayList();
       for(int docId = 0; docId < corpus.numRows(); docId++) {
         perplexitiesWithWeights.add(
-            Pair.of(model.perplexity(corpus.getRow(docId), docTopicCounts.getRow(docId)),
-                    corpus.getRow(docId).norm(1)));
+            Pair.of(model.perplexity(corpus.viewRow(docId), docTopicCounts.viewRow(docId)),
+                    corpus.viewRow(docId).norm(1)));
         Matrix docTopicModel
-            = new SparseRowMatrix(new int[] {model.getNumTopics(), model.getNumTerms()}, true);
-        model.trainDocTopicModel(corpus.getRow(docId), docTopicCounts.getRow(docId), docTopicModel);
+            = new SparseRowMatrix(model.getNumTopics(), model.getNumTerms(), true);
+        model.trainDocTopicModel(corpus.viewRow(docId), docTopicCounts.viewRow(docId), docTopicModel);
         for(int t = 0; t < docTopicModel.numRows(); t++) {
-          updatedModel.updateTopic(t, docTopicModel.getRow(t));
+          updatedModel.updateTopic(t, docTopicModel.viewRow(t));
         }
       }
       model = updatedModel;
@@ -160,16 +160,16 @@ public class TestCVBModelTrainer extends TestCase {
     for(int iteration = 0; iteration < 100; iteration++) {
       List<Pair<Double,Double>> perplexitiesWithWeights = Lists.newArrayList();
       for(int docId = 0; docId < corpus.numRows(); docId++) {
-        Vector originalDocument = corpus.getRow(docId);
+        Vector originalDocument = corpus.viewRow(docId);
         Vector hashedVector = hash(originalDocument, hashedFeatureDim, numProbes, seed);
         perplexitiesWithWeights.add(
-            Pair.of(hashedModel.perplexity(hashedVector, docTopicCounts.getRow(docId)),
+            Pair.of(hashedModel.perplexity(hashedVector, docTopicCounts.viewRow(docId)),
                     hashedVector.norm(1)));
         Matrix docTopicModel
-            = new SparseRowMatrix(new int[] {numTopics, hashedFeatureDim}, true);
-        hashedModel.trainDocTopicModel(hashedVector, docTopicCounts.getRow(docId), docTopicModel);
+            = new SparseRowMatrix(numTopics, hashedFeatureDim, true);
+        hashedModel.trainDocTopicModel(hashedVector, docTopicCounts.viewRow(docId), docTopicModel);
         for(int t = 0; t < docTopicModel.numRows(); t++) {
-          updatedModel.updateTopic(t, docTopicModel.getRow(t));
+          updatedModel.updateTopic(t, docTopicModel.viewRow(t));
         }
       }
       hashedModel = updatedModel;
@@ -213,7 +213,7 @@ public class TestCVBModelTrainer extends TestCase {
         new Path("/tmp/topics"));
     Matrix otpMatrix = otpModel.topicTermCounts();
     for(int topic = 0; topic < otpMatrix.numRows(); topic++) {
-      otpMatrix.getRow(topic).assign(Functions.mult(1/otpMatrix.getRow(topic).norm(1)));
+      otpMatrix.viewRow(topic).assign(Functions.mult(1/otpMatrix.viewRow(topic).norm(1)));
     }
     System.out.println(otpModel.toString());
   }
@@ -222,8 +222,8 @@ public class TestCVBModelTrainer extends TestCase {
     int numTopics = p.numRows();
     double divergence = 0;
     for(int topic = 0; topic < numTopics; topic++) {
-      Vector pv = p.getRow(topic).normalize(1);
-      Vector qv = q.getRow(topic).normalize(1);
+      Vector pv = p.viewRow(topic).normalize(1);
+      Vector qv = q.viewRow(topic).normalize(1);
       for(Vector.Element e : qv) {
         if(e.get() > 0 && pv.get(e.index()) > 0) {
           divergence += pv.get(e.index()) * Math.log(pv.get(e.index()) / e.get());
@@ -285,7 +285,7 @@ public class TestCVBModelTrainer extends TestCase {
       }
     }));
 
-    return new SparseRowMatrix(new int[] {vectors.size(), 26},
+    return new SparseRowMatrix(vectors.size(), 26,
         vectors.toArray(new Vector[vectors.size()]));
   }
 }

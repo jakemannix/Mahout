@@ -131,7 +131,7 @@ public class ModelTrainer {
         List<TrainerRunnable> runnables = Lists.newArrayList();
         for(Map.Entry<Vector, Vector> entry : batch.entrySet()) {
           runnables.add(new TrainerRunnable(readModel, null, entry.getKey(),
-              entry.getValue(), new SparseRowMatrix(new int[]{numTopics, numTerms}, true),
+              entry.getValue(), new SparseRowMatrix(numTopics, numTerms, true),
               numDocTopicsIters));
         }
         threadPool.invokeAll(runnables);
@@ -151,8 +151,8 @@ public class ModelTrainer {
     while(true) {
       try {
         workQueue.put(new TrainerRunnable(readModel,
-            update ? writeModel : null, document, docTopicCounts, new SparseRowMatrix(new int[]{
-            numTopics, numTerms}, true), numDocTopicIters));
+            update ? writeModel : null, document, docTopicCounts, new SparseRowMatrix(
+            numTopics, numTerms, true), numDocTopicIters));
         return;
       } catch (InterruptedException e) {
         log.warn("Interrupted waiting to submit document to work queue: " + document, e);
@@ -162,8 +162,8 @@ public class ModelTrainer {
 
   public double calculatePerplexity(Vector document, Vector docTopicCounts, int numDocTopicIters) {
     TrainerRunnable runner =  new TrainerRunnable(readModel,
-            null, document, docTopicCounts, new SparseRowMatrix(new int[]{
-            numTopics, numTerms}, true), numDocTopicIters);
+            null, document, docTopicCounts, new SparseRowMatrix(
+            numTopics, numTerms, true), numDocTopicIters);
     return runner.call();
   }
 

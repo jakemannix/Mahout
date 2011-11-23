@@ -104,7 +104,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     totalCorpusWeight = 0;
     int numNonZero = 0;
     for(int i=0; i<numDocuments; i++) {
-      Vector v = corpusWeights.getRow(i);
+      Vector v = corpusWeights.viewRow(i);
       double norm;
       if(v != null && (norm = v.norm(1)) != 0) {
         numNonZero += v.getNumNondefaultElements();
@@ -132,8 +132,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   private void inferDocuments(double convergence, int maxIter, boolean recalculate) {
     for(int docId = 0; docId < corpusWeights.numRows() ; docId++) {
-      Vector inferredDocument = topicModel.infer(corpusWeights.getRow(docId),
-          docTopicCounts.getRow(docId));
+      Vector inferredDocument = topicModel.infer(corpusWeights.viewRow(docId),
+          docTopicCounts.viewRow(docId));
       // do what now?
     }
   }
@@ -145,12 +145,12 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   }
 
   private double error(int docId) {
-    Vector docTermCounts = corpusWeights.getRow(docId);
+    Vector docTermCounts = corpusWeights.viewRow(docId);
     if(docTermCounts == null) {
       return 0;
     } else {
       Vector expectedDocTermCounts =
-          topicModel.infer(corpusWeights.getRow(docId), docTopicCounts.getRow(docId));
+          topicModel.infer(corpusWeights.viewRow(docId), docTopicCounts.viewRow(docId));
       double expectedNorm = expectedDocTermCounts.norm(1);
       return expectedDocTermCounts.times(docTermCounts.norm(1)/expectedNorm)
           .minus(docTermCounts).norm(1);
@@ -438,7 +438,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     }
     int numRows = vectorList.size();
     int numCols = vectorList.get(0).size();
-    return new SparseRowMatrix(new int[] {numRows, numCols},
+    return new SparseRowMatrix(numRows, numCols,
         vectorList.toArray(new Vector[vectorList.size()]), true,
         vectorList.get(0).isSequentialAccess());
   }
