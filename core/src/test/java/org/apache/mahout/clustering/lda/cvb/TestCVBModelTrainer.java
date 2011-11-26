@@ -7,11 +7,9 @@ import com.google.common.base.Predicates;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
-import com.google.common.primitives.Ints;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.mahout.common.MahoutTestCase;
-import org.apache.mahout.common.Pair;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
@@ -20,9 +18,8 @@ import org.apache.mahout.math.MatrixUtils;
 import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.function.Functions;
 import org.apache.mahout.math.function.DoubleFunction;
-import org.apache.mahout.vectorizer.encoders.MurmurHash;
+import org.apache.mahout.math.function.Functions;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -35,7 +32,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.regex.Pattern;
 
-public class TestCVBModelTrainer /*extends TestCase*/ {
+public class TestCVBModelTrainer extends MahoutTestCase {
 
   double eta = 0.1;
   double alpha = 0.1;
@@ -93,43 +90,6 @@ public class TestCVBModelTrainer /*extends TestCase*/ {
     }
   }
 
-  public void testPerplexityVariance() throws Exception {
-    model = new TopicModel(model.getNumTopics(), model.getNumTerms(), eta, alpha, new Random(1234L),
-       dictionary, 1, 1);
-    TopicModel updatedModel = new TopicModel(model.getNumTopics(), model.getNumTerms(), eta, alpha,
-        dictionary, 1, 1);
-    Matrix docTopicCounts = new DenseMatrix(corpus.numRows(), model.getNumTopics());
-    docTopicCounts.assign(1/model.getNumTopics());
-    double startingPerplexity = -1;
-    double previousPerplexity = -1;
-    for(int i = 0; i < 100; i++) {
-      List<Pair<Double,Double>> perplexitiesWithWeights = Lists.newArrayList();
-      for(int docId = 0; docId < corpus.numRows(); docId++) {
-        perplexitiesWithWeights.add(
-            Pair.of(model.perplexity(corpus.viewRow(docId), docTopicCounts.viewRow(docId)),
-                    corpus.viewRow(docId).norm(1)));
-        Matrix docTopicModel
-            = new SparseRowMatrix(model.getNumTopics(), model.getNumTerms(), true);
-        model.trainDocTopicModel(corpus.viewRow(docId), docTopicCounts.viewRow(docId), docTopicModel);
-        for(int t = 0; t < docTopicModel.numRows(); t++) {
-          updatedModel.updateTopic(t, docTopicModel.viewRow(t));
-        }
-      }
-      model = updatedModel;
-      updatedModel = new TopicModel(model.getNumTopics(), model.getNumTerms(), eta, alpha,
-        dictionary, 1, 1);
-      double perplexity = sum(perplexitiesWithWeights, true) / sum(perplexitiesWithWeights, false);
-      if(startingPerplexity < 0) {
-        startingPerplexity = perplexity;
-        previousPerplexity = perplexity;
-      }
-      double delta = (perplexity - previousPerplexity) / startingPerplexity;
-      System.out.println(delta + " : cumulative delta:" + (1 - perplexity / startingPerplexity)
-                         + ", Perplexity: " + perplexity);
-      previousPerplexity = perplexity;
-    }
-  }
-
   private static Vector hash(Vector v, int dim, int numProbes, int seed) {
     Vector hashedVector = new RandomAccessSparseVector(dim, v.getNumNondefaultElements() * numProbes);
     Iterator<Vector.Element> it = v.iterateNonZero();
@@ -143,52 +103,6 @@ public class TestCVBModelTrainer /*extends TestCase*/ {
     }
     return hashedVector;
   }
-
-
-  public void testTrainHashedModel() throws Exception {
-    int hashedFeatureDim = model.getNumTerms() / 10;
-    int numProbes = 4;
-    int seed = 1234;
-    int numTopics = model.getNumTopics();
-    TopicModel hashedModel = new TopicModel(numTopics, hashedFeatureDim, eta, alpha,
-        new Random(1234L), dictionary, 1, 1);
-    TopicModel updatedModel = new TopicModel(numTopics, hashedFeatureDim, eta, alpha,
-        dictionary, 1, 1);
-    Matrix docTopicCounts = new DenseMatrix(corpus.numRows(), numTopics);
-    double startingPerplexity = -1;
-    double previousPerplexity = -1;
-    for(int iteration = 0; iteration < 100; iteration++) {
-      List<Pair<Double,Double>> perplexitiesWithWeights = Lists.newArrayList();
-      for(int docId = 0; docId < corpus.numRows(); docId++) {
-        Vector originalDocument = corpus.viewRow(docId);
-        Vector hashedVector = hash(originalDocument, hashedFeatureDim, numProbes, seed);
-        perplexitiesWithWeights.add(
-            Pair.of(hashedModel.perplexity(hashedVector, docTopicCounts.viewRow(docId)),
-                    hashedVector.norm(1)));
-        Matrix docTopicModel
-            = new SparseRowMatrix(numTopics, hashedFeatureDim, true);
-        hashedModel.trainDocTopicModel(hashedVector, docTopicCounts.viewRow(docId), docTopicModel);
-        for(int t = 0; t < docTopicModel.numRows(); t++) {
-          updatedModel.updateTopic(t, docTopicModel.viewRow(t));
-        }
-      }
-      hashedModel = updatedModel;
-      updatedModel = new TopicModel(numTopics, hashedFeatureDim, eta, alpha,
-        dictionary, 1, 1);
-      double perplexity = sum(perplexitiesWithWeights, true) / sum(perplexitiesWithWeights, false);
-      if(startingPerplexity < 0) {
-        startingPerplexity = perplexity;
-        previousPerplexity = perplexity;
-      }
-      double delta = (perplexity - previousPerplexity) / startingPerplexity;
-      System.out.println(delta + " : cumulative delta:" + (1 - perplexity / startingPerplexity)
-                         + ", Perplexity: " + perplexity);
-      previousPerplexity = perplexity;
-    }
-    hashedModel.setConf(new Configuration());
-    hashedModel.persist(new Path(basePath, "hashed-" + hashedFeatureDim), true);
-  }
-
 
   @Test
   public void testOverlappingTriangles() throws Exception {
@@ -245,12 +159,10 @@ public class TestCVBModelTrainer /*extends TestCase*/ {
     return model;
   }
 
-
-  @Test
   public static Matrix sampledCorpus(Matrix matrix, Random random, double eta, double alpha,
       int numDocs, int numSamples, int numTopicsPerDoc) {
     TopicModel model = new TopicModel(matrix, eta, alpha, null, 1, 1);
-    Matrix corpus = new SparseRowMatrix(new int[] {numDocs, model.getNumTerms()});
+    Matrix corpus = new SparseRowMatrix(numDocs, model.getNumTerms());
     for(int docId = 0; docId < numDocs; docId++) {
       for(int i = 0; i < numTopicsPerDoc; i++) {
         int topic = random.nextInt(model.getNumTopics());

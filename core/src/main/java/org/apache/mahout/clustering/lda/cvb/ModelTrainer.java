@@ -175,8 +175,8 @@ public class ModelTrainer {
   public void trainSync(Vector document, Vector docTopicCounts, boolean update,
       int numDocTopicIters) {
     new TrainerRunnable(readModel,
-            update ? writeModel : null, document, docTopicCounts, new SparseRowMatrix(new int[]{
-            numTopics, numTerms}, true), numDocTopicIters).run();
+            update ? writeModel : null, document, docTopicCounts, new SparseRowMatrix(
+            numTopics, numTerms, true), numDocTopicIters).run();
   }
 
   public double calculatePerplexity(Vector document, Vector docTopicCounts, int numDocTopicIters) {
