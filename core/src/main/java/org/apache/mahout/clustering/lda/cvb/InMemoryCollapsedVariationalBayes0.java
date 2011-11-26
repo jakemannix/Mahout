@@ -25,6 +25,7 @@ import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.commandline.DefaultOptionCreator;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileIterable;
 import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.DistributedRowMatrixWriter;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.SparseRowMatrix;
@@ -59,6 +60,8 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
 
   private Matrix docTopicCounts;
 
+  private long seed;
+
   private TopicModel topicModel;
   private TopicModel updatedModel;
 
@@ -76,8 +79,14 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   }
 
   public InMemoryCollapsedVariationalBayes0(Matrix corpus, String[] terms, int numTopics,
+      double alpha, double eta) {
+    this(corpus, terms, numTopics, alpha, eta, 1, 1, 0, 1234);
+  }
+    
+  public InMemoryCollapsedVariationalBayes0(Matrix corpus, String[] terms, int numTopics,
       double alpha, double eta, int numTrainingThreads, int numUpdatingThreads,
-      double modelCorpusFraction) {
+      double modelCorpusFraction, long seed) {
+    this.seed = seed;
     this.numTopics = numTopics;
     this.alpha = alpha;
     this.eta = eta;
@@ -139,8 +148,19 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
   }
 
   public void trainDocuments() {
+    trainDocuments(0);
+  }
+
+  public void trainDocuments(double testFraction) {
     long start = System.nanoTime();
-    modelTrainer.train(corpusWeights, docTopicCounts);
+    modelTrainer.start();
+    for(int docId = 0; docId < corpusWeights.numRows(); docId++) {
+      if(testFraction == 0 || docId % ((int)1/testFraction) != 0) {
+        Vector docTopics = new DenseVector(numTopics).assign(1d/numTopics); // docTopicCounts.getRow(docId)
+        modelTrainer.trainSync(corpusWeights.getRow(docId), docTopics , true, 10);
+      }
+    }
+    modelTrainer.stop();
     logTime("train documents", System.nanoTime() - start);
   }
 
@@ -167,25 +187,37 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     return error / totalCorpusWeight;
   }
 
-  public double iterateUntilConvergence(double minFractionalErrorChange, int maxIterations, int minIter) {
+
+
+  public double iterateUntilConvergence(double minFractionalErrorChange,
+      int maxIterations, int minIter) {
+    return iterateUntilConvergence(minFractionalErrorChange, maxIterations, minIter, 0);
+  }
+
+  public double iterateUntilConvergence(double minFractionalErrorChange,
+      int maxIterations, int minIter, double testFraction) {
     double fractionalChange = Double.MAX_VALUE;
     int iter = 0;
     double oldPerplexity = 0;
     while(iter < minIter) {
+      trainDocuments(testFraction);
       if(verbose) {
-        log.info(modelTrainer.getReadModel().toString());
+        log.info("model after: " + iter + ": " + modelTrainer.getReadModel().toString());
       }
-      trainDocuments();
       log.info("iteration " + iter + " complete");
-      oldPerplexity = modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts);
+      oldPerplexity = modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts,
+          testFraction);
       log.info(oldPerplexity + " = perplexity");
       iter++;
     }
     double newPerplexity = 0;
     while(iter < maxIterations && fractionalChange > minFractionalErrorChange) {
       trainDocuments();
-      log.info("iteration " + iter + " complete");
-      newPerplexity = modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts);
+      if(verbose) {
+        log.info("model after: " + iter + ": " + modelTrainer.getReadModel().toString());
+      }
+      newPerplexity = modelTrainer.calculatePerplexity(corpusWeights, docTopicCounts,
+          testFraction);
       log.info(newPerplexity + " = perplexity");
       iter++;
       fractionalChange = Math.abs(newPerplexity - oldPerplexity) / oldPerplexity;
@@ -340,7 +372,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
       logTime("vector seqfile corpus loading", System.nanoTime() - start);
       start = System.nanoTime();
       cvb0 = new InMemoryCollapsedVariationalBayes0(corpus, terms, numTopics, alpha, eta,
-          numTrainThreads, numUpdateThreads, modelCorpusFraction);
+          numTrainThreads, numUpdateThreads, modelCorpusFraction, 1234);
       logTime("cvb0 init", System.nanoTime() - start);
 
       start = System.nanoTime();

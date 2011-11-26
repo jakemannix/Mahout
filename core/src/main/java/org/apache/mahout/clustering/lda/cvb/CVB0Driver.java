@@ -3,7 +3,6 @@ package org.apache.mahout.clustering.lda.cvb;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileStatus;
@@ -11,7 +10,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -365,10 +363,10 @@ public class CVB0Driver extends AbstractJob {
    *         exists for the given iteration.
    * @throws IOException
    */
-  private double readPerplexity(Configuration conf, Path topicModelStateTemp, int iteration)
+  public static double readPerplexity(Configuration conf, Path topicModelStateTemp, int iteration)
       throws IOException {
     Path perplexityPath = perplexityPath(topicModelStateTemp, iteration);
-    FileSystem fs = FileSystem.get(getConf());
+    FileSystem fs = FileSystem.get(conf);
     if (!fs.exists(perplexityPath)) {
       log.warn("Perplexity path {} does not exist, returning NaN", perplexityPath);
       return Double.NaN;
@@ -385,7 +383,6 @@ public class CVB0Driver extends AbstractJob {
     log.info("Read {} entries with total perplexity {} and model weight {}", new Object[] { n,
             perplexity, modelWeight });
     return perplexity / modelWeight;
-
   }
 
   private Job writeTopicModel(Configuration conf, Path modelInput, Path output) throws IOException,
