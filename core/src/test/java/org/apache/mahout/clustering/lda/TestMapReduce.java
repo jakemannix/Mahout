@@ -119,8 +119,8 @@ public final class TestMapReduce extends MahoutTestCase {
   @Test
   public void testEndToEnd() throws Exception {
     double eta = 0.1;
-    int numGeneratingTopics = 3;
-    int numTerms = 9;
+    int numGeneratingTopics = 5;
+    int numTerms = 26;
     Matrix matrix = randomStructuredModel(numGeneratingTopics, numTerms,
         new DoubleFunction() {
       @Override public double apply(double d) {
@@ -140,9 +140,9 @@ public final class TestMapReduce extends MahoutTestCase {
 
     int numIterations = 5;
     List<Double> perplexities = Lists.newArrayList();
-    int startTopic = numGeneratingTopics - 1;
+    int startTopic = numGeneratingTopics - 2;
     int numTestTopics = startTopic;
-    while(numTestTopics < numGeneratingTopics + 2) {
+    while(numTestTopics < numGeneratingTopics + 3) {
       LDADriver driver = new LDADriver();
       driver.setConf(new Configuration());
       Path outputPath = getTestTempDirPath("output" + numTestTopics);
