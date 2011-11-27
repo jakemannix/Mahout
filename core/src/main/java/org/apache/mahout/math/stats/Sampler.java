@@ -1,4 +1,4 @@
-package org.apache.mahout.clustering.lda.cvb;
+package org.apache.mahout.math.stats;
 
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Vector;

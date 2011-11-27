@@ -17,6 +17,7 @@ import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.function.Functions;
+import org.apache.mahout.math.stats.Sampler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
