@@ -9,13 +9,33 @@ import java.util.Random;
 public class Sampler {
 
   private Random random;
+  private double[] sampler;
 
   public Sampler(Random random) {
     this.random = random;
+    sampler = null;
+  }
+
+  public Sampler(Random random, double[] sampler) {
+    this.random = random;
+    this.sampler = sampler;
+  }
+
+  public Sampler(Random random, Vector distribution) {
+    this.random = random;
+    this.sampler = samplerFor(distribution);
   }
 
   public int sample(Vector distribution) {
     return sample(samplerFor(distribution));
+  }
+
+  public int sample() {
+    if(sampler == null) {
+      throw new NullPointerException("Sampler must have been constructed with a distribution, or"
+        + " else sample(Vector) should be used to sample");
+    }
+    return sample(sampler);
   }
 
   private double[] samplerFor(double[] distribution) {
