@@ -10,7 +10,6 @@ import com.google.common.io.Files;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.mahout.common.MahoutTestCase;
-import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.MatrixSlice;
@@ -31,6 +30,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.regex.Pattern;
+
+import static org.apache.mahout.clustering.ClusteringTestUtils.randomStructuredModel;
+import static org.apache.mahout.clustering.ClusteringTestUtils.sampledCorpus;
 
 public class TestCVBModelTrainer extends MahoutTestCase {
 
@@ -134,47 +136,6 @@ public class TestCVBModelTrainer extends MahoutTestCase {
     System.out.println(otpModel.toString());
   }
 
-  public static Matrix randomStructuredModel(int numTopics, int numTerms) {
-    return randomStructuredModel(numTopics, numTerms, new DoubleFunction() {
-      @Override public double apply(double d) {
-        return 1.0 / (1 + Math.abs(d));
-      }
-    });
-  }
-
-  public static Matrix randomStructuredModel(int numTopics, int numTerms, DoubleFunction decay) {
-    Matrix model = new DenseMatrix(numTopics, numTerms);
-    int width = numTerms / numTopics;
-    for(int topic = 0; topic < numTopics; topic++) {
-      int topicCentroid = width * (1+topic);
-      for(int i = 0; i < numTerms; i++) {
-        int distance = Math.abs(topicCentroid - i);
-        if(distance > numTerms / 2) {
-          distance = numTerms - distance;
-        }
-        double v = decay.apply(distance);
-        model.set(topic, i, v);
-      }
-    }
-    return model;
-  }
-
-  public static Matrix sampledCorpus(Matrix matrix, Random random, double eta, double alpha,
-      int numDocs, int numSamples, int numTopicsPerDoc) {
-    TopicModel model = new TopicModel(matrix, eta, alpha, null, 1, 1);
-    Matrix corpus = new SparseRowMatrix(numDocs, model.getNumTerms());
-    for(int docId = 0; docId < numDocs; docId++) {
-      for(int i = 0; i < numTopicsPerDoc; i++) {
-        int topic = random.nextInt(model.getNumTopics());
-        for(int s = 0; s < (float)numSamples / (1 + i); s++) {
-          int term = model.sampleTerm(topic);
-          corpus.set(docId, term, corpus.get(docId, term) + 1);
-        }
-      }
-    }
-    return corpus;
-  }
-
   @Test
   public void testInMemoryCVB0() throws Exception {
     int numGeneratingTopics = 5;
@@ -194,7 +155,7 @@ public class TestCVBModelTrainer extends MahoutTestCase {
     int numSamples = 20;
     int numTopicsPerDoc = 1;
 
-    Matrix sampledCorpus = sampledCorpus(matrix, new Random(12345), eta, alpha,
+    Matrix sampledCorpus = sampledCorpus(matrix, new Random(12345),
         numDocs, numSamples, numTopicsPerDoc);
 
     List<Double> perplexities = Lists.newArrayList();
@@ -231,7 +192,7 @@ public class TestCVBModelTrainer extends MahoutTestCase {
     int numSamples = 10;
     int numTopicsPerDoc = 1;
 
-    Matrix sampledCorpus = sampledCorpus(matrix, new Random(1234), eta, alpha,
+    Matrix sampledCorpus = sampledCorpus(matrix, new Random(1234),
         numDocs, numSamples, numTopicsPerDoc);
 
     Path sampleCorpusPath = getTestTempDirPath("corpus");
