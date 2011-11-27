@@ -146,7 +146,7 @@ public final class TestMapReduce extends MahoutTestCase {
       LDADriver driver = new LDADriver();
       driver.setConf(new Configuration());
       Path outputPath = getTestTempDirPath("output" + numTestTopics);
-      perplexities.add(-driver.run(driver.getConf(), sampleCorpusPath, outputPath, numTestTopics,
+      perplexities.add(driver.run(driver.getConf(), sampleCorpusPath, outputPath, numTestTopics,
           numTerms, eta, numIterations, false));
       numTestTopics++;
     }

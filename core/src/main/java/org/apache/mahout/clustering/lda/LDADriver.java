@@ -268,7 +268,7 @@ public final class LDADriver extends AbstractJob {
                                         numWords,
                                         topicSmoothing);
     }
-    return oldLL;
+    return -oldLL;
   }
 
   private static void writeInitialState(Path statePath, int numTopics, int numWords) throws IOException {
