@@ -126,7 +126,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         : topicModel;
     updatedModel.setConf(getConf());
     docTopicCounts = new DenseMatrix(numDocuments, numTopics);
-    docTopicCounts.assign(1/numTopics);
+    docTopicCounts.assign(1.0 / numTopics);
     modelTrainer = new ModelTrainer(topicModel, updatedModel, numTrainingThreads, numTopics, numTerms);
   }
 
