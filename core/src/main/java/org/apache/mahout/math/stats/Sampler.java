@@ -6,6 +6,14 @@ import org.apache.mahout.math.Vector;
 import java.util.Arrays;
 import java.util.Random;
 
+/**
+ * Discrete distribution sampler:
+ *
+ * Samples from a given discrete distribution: you provide a source of randomness and a Vector
+ * (cardinality N) which describes a distribution over [0,N), and calls to sample() sample
+ * from 0 to N using this distribution
+ *
+ */
 public class Sampler {
 
   private Random random;

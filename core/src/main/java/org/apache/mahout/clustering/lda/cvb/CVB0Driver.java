@@ -100,7 +100,8 @@ public class CVB0Driver extends AbstractJob {
   public static final String BACKFILL_PERPLEXITY = "backfill_perplexity";
   private static final String MODEL_PATHS = "mahout.lda.cvb.modelPath";
 
-  @Override public int run(String[] args) throws Exception {
+  @Override
+  public int run(String[] args) throws Exception {
     addInputOption();
     addOutputOption();
     addOption(DefaultOptionCreator.maxIterationsOption().create());

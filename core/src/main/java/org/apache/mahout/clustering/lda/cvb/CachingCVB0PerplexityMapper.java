@@ -17,7 +17,7 @@ import java.util.Random;
 public class CachingCVB0PerplexityMapper extends
     Mapper<IntWritable, VectorWritable, DoubleWritable, DoubleWritable> {
   /**
-   * Counters for {@link CachingCVB0PerplexityMapper}.
+   * Hadoop counters for {@link CachingCVB0PerplexityMapper}, to aid in debugging.
    */
   public static enum Counters {
     SAMPLED_DOCUMENTS;
