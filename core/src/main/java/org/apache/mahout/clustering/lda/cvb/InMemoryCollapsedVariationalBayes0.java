@@ -135,7 +135,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
         : topicModel;
     updatedModel.setConf(getConf());
     docTopicCounts = new DenseMatrix(numDocuments, numTopics);
-    docTopicCounts.assign(1/numTopics);
+    docTopicCounts.assign(1.0/numTopics);
     modelTrainer = new ModelTrainer(topicModel, updatedModel, numTrainingThreads, numTopics, numTerms);
   }
 
@@ -156,7 +156,7 @@ public class InMemoryCollapsedVariationalBayes0 extends AbstractJob {
     modelTrainer.start();
     for(int docId = 0; docId < corpusWeights.numRows(); docId++) {
       if(testFraction == 0 || docId % ((int)1/testFraction) != 0) {
-        Vector docTopics = new DenseVector(numTopics).assign(1d/numTopics); // docTopicCounts.getRow(docId)
+        Vector docTopics = new DenseVector(numTopics).assign(1.0/numTopics); // docTopicCounts.getRow(docId)
         modelTrainer.trainSync(corpusWeights.viewRow(docId), docTopics , true, 10);
       }
     }
