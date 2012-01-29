@@ -88,7 +88,8 @@
 
   <dependencies>
 
-    <!--  3rd-party -->  
+    <!--  3rd-party 
+    -->
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-math</artifactId>
