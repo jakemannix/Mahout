@@ -20,7 +20,6 @@ package org.apache.mahout.utils.vectors;
 import com.google.common.base.Function;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Ordering;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -39,7 +38,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -95,8 +93,7 @@ public final class VectorHelper {
         entries.add(pair);
       }
     }
-    Collections.sort(entries, Ordering.natural().reverse());
-    return entries;
+    return Lists.reverse(entries);
   }
 
   public static List<Pair<Integer, Double>> firstEntries(Vector vector, int maxEntries) {
