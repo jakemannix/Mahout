@@ -132,6 +132,7 @@ public class CVB0Driver extends AbstractJob {
   public static final String BACKFILL_PERPLEXITY = "backfill_perplexity";
   private static final String MODEL_PATHS = "mahout.lda.cvb.modelPath";
   public static final String ONLY_LABELED_DOCS = "labeled_only";
+  public static final String USE_SPARSE_MODEL = "sparse_model";
 
   @Override
   public int run(String[] args) throws Exception {
@@ -167,6 +168,8 @@ public class CVB0Driver extends AbstractJob {
     addOption(ONLY_LABELED_DOCS, "ol", "only use docs with non-null doc/topic priors", "false");
     addOption(buildOption(BACKFILL_PERPLEXITY, null,
         "enable backfilling of missing perplexity values", false, false, null));
+    addOption(buildOption(USE_SPARSE_MODEL, "sm",
+        "use sparse model representation", true, false, "false"));
 
     if(parseArguments(args) == null) {
       return -1;
@@ -174,7 +177,6 @@ public class CVB0Driver extends AbstractJob {
 
     int numTopics = Integer.parseInt(getOption(NUM_TOPICS));
     Path inputPath = getInputPath();
-    Path topicModelOutputPath = getOutputPath();
     int maxIterations = Integer.parseInt(getOption(DefaultOptionCreator.MAX_ITERATIONS_OPTION));
     int iterationBlockSize = Integer.parseInt(getOption(ITERATION_BLOCK_SIZE));
     double convergenceDelta = Double.parseDouble(getOption(DefaultOptionCreator.CONVERGENCE_DELTA_OPTION));
@@ -202,6 +204,7 @@ public class CVB0Driver extends AbstractJob {
     int numReduceTasks = Integer.parseInt(getOption(NUM_REDUCE_TASKS));
     boolean backfillPerplexity = hasOption(BACKFILL_PERPLEXITY);
     boolean useOnlyLabeledDocs = hasOption(ONLY_LABELED_DOCS); // check!
+    boolean useSparseModel = hasOption(USE_SPARSE_MODEL);
     CVBConfig cvbConfig = new CVBConfig().setAlpha(alpha).setEta(eta)
         .setBackfillPerplexity(backfillPerplexity).setConvergenceDelta(convergenceDelta)
         .setDictionaryPath(dictionaryPath).setDocTopicOutputPath(docTopicOutputPath)
@@ -210,7 +213,8 @@ public class CVB0Driver extends AbstractJob {
         .setMaxItersPerDoc(maxItersPerDoc).setModelTempPath(modelTempPath)
         .setNumReduceTasks(numReduceTasks).setNumTrainThreads(numTrainThreads)
         .setNumUpdateThreads(numUpdateThreads).setNumTerms(numTerms).setNumTopics(numTopics)
-        .setTestFraction(testFraction).setSeed(seed).setUseOnlyLabeledDocs(useOnlyLabeledDocs);
+        .setTestFraction(testFraction).setSeed(seed).setUseOnlyLabeledDocs(useOnlyLabeledDocs)
+        .setUseSparseModel(useSparseModel);
     return run(getConf(), cvbConfig);
   }
 
@@ -276,6 +280,7 @@ public class CVB0Driver extends AbstractJob {
     conf.set(MAX_ITERATIONS_PER_DOC, String.valueOf(c.getMaxIterations()));
     conf.set(MODEL_WEIGHT, "1"); // TODO
     conf.set(TEST_SET_FRACTION, String.valueOf(c.getTestFraction()));
+    conf.setBoolean(USE_SPARSE_MODEL, c.isUseSparseModel());
 
     List<Double> perplexities = Lists.newArrayList();
     for (int i = 1; i <= iterationNumber; i++) {

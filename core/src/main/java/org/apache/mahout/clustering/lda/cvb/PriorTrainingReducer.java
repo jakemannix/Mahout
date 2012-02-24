@@ -13,6 +13,7 @@ import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.MatrixSlice;
+import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.slf4j.Logger;
@@ -30,7 +31,8 @@ public class PriorTrainingReducer extends MapReduceBase
     SKIPPED_DOC_IDS,
     UNUSED_PRIORS,
     USED_DOCS,
-    DOCS_WITH_PRIORS
+    DOCS_WITH_PRIORS,
+    NUM_NONZERO_MODEL_ENTRIES
   }
 
   public static final String DOC_TOPICS = "docTopics";
@@ -39,6 +41,7 @@ public class PriorTrainingReducer extends MapReduceBase
   private int maxIters;
   private int numTopics;
   private boolean onlyLabeledDocs;
+  private boolean useSparseModel;
   private MultipleOutputs multipleOutputs;
   private Reporter reporter;
 
@@ -68,6 +71,7 @@ public class PriorTrainingReducer extends MapReduceBase
       maxIters = conf.getInt(CVB0Driver.MAX_ITERATIONS_PER_DOC, 10);
       double modelWeight = conf.getFloat(CVB0Driver.MODEL_WEIGHT, 1f);
       onlyLabeledDocs = conf.getBoolean(CVB0Driver.ONLY_LABELED_DOCS, false);
+      useSparseModel = conf.getBoolean(CVB0Driver.USE_SPARSE_MODEL, false);
 
       log.info("Initializing read model");
       TopicModel readModel;
@@ -75,15 +79,18 @@ public class PriorTrainingReducer extends MapReduceBase
       if(modelPaths != null && modelPaths.length > 0) {
         readModel = new TopicModel(conf, eta, alpha, null, numUpdateThreads, modelWeight, modelPaths);
       } else {
+        // TODO check whether this works: allowing the counts to be *zero* and just using smoothing
         log.info("No model files found, starting with uniform p(term|topic) prior");
-        Matrix m = new DenseMatrix(numTopics, numTerms);
-        m.assign(1.0 / numTerms);
+        Matrix m = useSparseModel ? new SparseRowMatrix(numTopics, numTerms, true) : new DenseMatrix(numTopics, numTerms);
+        // m.assign(1.0 / numTerms);
         readModel = new TopicModel(m, eta, alpha, null, numTrainThreads, modelWeight);
       }
 
       log.info("Initializing write model");
       TopicModel writeModel = modelWeight == 1
-          ? new TopicModel(new DenseMatrix(numTopics, numTerms),
+          ? new TopicModel(useSparseModel
+                           ? new SparseRowMatrix(numTopics, numTerms)
+                           : new DenseMatrix(numTopics, numTerms),
                            eta, alpha, null, numUpdateThreads, 1.0)
           : readModel;
 
@@ -150,10 +157,13 @@ public class PriorTrainingReducer extends MapReduceBase
 
     log.info("Writing model");
     TopicModel model = modelTrainer.getReadModel();
+    int numNonZero = 0;
     for(MatrixSlice topic : model) {
+      numNonZero += topic.vector().getNumNondefaultElements();
       multipleOutputs.getCollector(TOPIC_TERMS, reporter)
                      .collect(new IntWritable(topic.index()), new VectorWritable(topic.vector()));
     }
+    reporter.getCounter(Counters.NUM_NONZERO_MODEL_ENTRIES).increment(numNonZero);
     multipleOutputs.close();
   }
 }

@@ -196,7 +196,9 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
       throw new IOException(Arrays.toString(modelPaths) + " have no vectors in it");
     }
     numTopics++;
-    Matrix model = new DenseMatrix(numTopics, numTerms);
+    Matrix model = conf.getBoolean(CVB0Driver.USE_SPARSE_MODEL, false)
+                 ? new SparseRowMatrix(numTopics, numTerms, true)
+                 : new DenseMatrix(numTopics, numTerms);
     for(Pair<Integer, Vector> pair : rows) {
       model.viewRow(pair.getFirst()).assign(pair.getSecond());
     }

@@ -25,6 +25,16 @@ public class CVBConfig {
   private int numReduceTasks;
   private boolean backfillPerplexity;
   private boolean useOnlyLabeledDocs;
+  private boolean useSparseModel;
+
+  public boolean isUseSparseModel() {
+    return useSparseModel;
+  }
+
+  public CVBConfig setUseSparseModel(boolean useSparseModel) {
+    this.useSparseModel = useSparseModel;
+    return this;
+  }
 
   public boolean isUseOnlyLabeledDocs() {
     return useOnlyLabeledDocs;
