@@ -31,6 +31,7 @@ import org.apache.mahout.math.DistributedRowMatrixWriter;
 import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.MatrixSlice;
 import org.apache.mahout.math.SequentialAccessSparseVector;
+import org.apache.mahout.math.SparseRowMatrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.function.Functions;
@@ -62,7 +63,9 @@ import java.util.concurrent.TimeUnit;
  * accumulated.
  */
 public class TopicModel implements Configurable, Iterable<MatrixSlice> {
-  
+
+  public static final String SPARSE_MODEL = TopicModel.class.getName() + ".sparse";
+
   private static final Logger log = LoggerFactory.getLogger(TopicModel.class);
   
   private final String[] dictionary;
@@ -87,9 +90,11 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     return numTopics;
   }
 
+  // static builder methods?
+
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary,
       double modelWeight) {
-    this(numTopics, numTerms, eta, alpha, null, dictionary, 1, modelWeight);
+    this(new SparseRowMatrix(numTopics, numTerms), eta, alpha, dictionary, 1, modelWeight);
   }
 
   public TopicModel(Configuration conf, double eta, double alpha,
@@ -97,25 +102,9 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     this(loadModel(conf, modelpath), eta, alpha, dictionary, numThreads, modelWeight);
   }
 
-  public TopicModel(int numTopics, int numTerms, double eta, double alpha, String[] dictionary,
-      int numThreads, double modelWeight) {
-    this(new DenseMatrix(numTopics, numTerms), new DenseVector(numTopics), eta, alpha, dictionary,
-        numThreads, modelWeight);
-  }
-
   public TopicModel(int numTopics, int numTerms, double eta, double alpha, Random random,
       String[] dictionary, int numThreads, double modelWeight) {
     this(randomMatrix(numTopics, numTerms, random), eta, alpha, dictionary, numThreads, modelWeight);
-  }
-
-  private TopicModel(Pair<Matrix, Vector> model, double eta, double alpha, String[] dict,
-      int numThreads, double modelWeight) {
-    this(model.getFirst(), model.getSecond(), eta, alpha, dict, numThreads, modelWeight);
-  }
-
-  public TopicModel(Matrix topicTermCounts, Vector topicSums, double eta, double alpha,
-    String[] dictionary, double modelWeight) {
-    this(topicTermCounts, topicSums, eta, alpha, dictionary, 1, modelWeight);
   }
 
   public TopicModel(Matrix topicTermCounts, double eta, double alpha, String[] dictionary,
@@ -176,9 +165,8 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     return topicSums;
   }
 
-  private static Pair<Matrix,Vector> randomMatrix(int numTopics, int numTerms, Random random) {
+  private static Matrix randomMatrix(int numTopics, int numTerms, Random random) {
     Matrix topicTermCounts = new DenseMatrix(numTopics, numTerms);
-    Vector topicSums = new DenseVector(numTopics);
     if(random != null) {
       for(int x = 0; x < numTopics; x++) {
         for(int term = 0; term < numTerms; term++) {
@@ -186,13 +174,10 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
         }
       }
     }
-    for(int x = 0; x < numTopics; x++) {
-      topicSums.set(x, random == null ? 1.0 : topicTermCounts.viewRow(x).norm(1));
-    }
-    return Pair.of(topicTermCounts, topicSums);
+    return topicTermCounts;
   }
 
-  public static Pair<Matrix, Vector> loadModel(Configuration conf, Path... modelPaths)
+  public static Matrix loadModel(Configuration conf, Path... modelPaths)
       throws IOException {
     int numTopics = -1;
     int numTerms = -1;
@@ -212,12 +197,10 @@ public class TopicModel implements Configurable, Iterable<MatrixSlice> {
     }
     numTopics++;
     Matrix model = new DenseMatrix(numTopics, numTerms);
-    Vector topicSums = new DenseVector(numTopics);
     for(Pair<Integer, Vector> pair : rows) {
       model.viewRow(pair.getFirst()).assign(pair.getSecond());
-      topicSums.set(pair.getFirst(), pair.getSecond().norm(1));
     }
-    return Pair.of(model, topicSums);
+    return model;
   }
 
   // NOTE: this is purely for debug purposes.  It is not performant to "toString()" a real model

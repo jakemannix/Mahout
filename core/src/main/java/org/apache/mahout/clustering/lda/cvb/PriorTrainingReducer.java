@@ -78,14 +78,12 @@ public class PriorTrainingReducer extends MapReduceBase
         log.info("No model files found, starting with uniform p(term|topic) prior");
         Matrix m = new DenseMatrix(numTopics, numTerms);
         m.assign(1.0 / numTerms);
-        readModel = new TopicModel(m, new DenseVector(numTopics).assign(1.0), eta, alpha, null,
-            numTrainThreads, modelWeight);
+        readModel = new TopicModel(m, eta, alpha, null, numTrainThreads, modelWeight);
       }
 
       log.info("Initializing write model");
       TopicModel writeModel = modelWeight == 1
           ? new TopicModel(new DenseMatrix(numTopics, numTerms),
-                           new DenseVector(numTopics),
                            eta, alpha, null, numUpdateThreads, 1.0)
           : readModel;
 
